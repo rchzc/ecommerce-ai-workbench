@@ -23,10 +23,14 @@ class Chunk:
     index: int
     source: str
     domain: str
+    #: 文档在语料中的全局序号。用于生成全局唯一的 chunk_id ——
+    #: 同一域下多篇文档的 index 都从 0 开始，只靠 domain+index 会撞 ID，
+    #: 导致写入向量库时被拒绝（ChromaDB 要求 ID 唯一）。
+    doc_ordinal: int = 0
 
     @property
     def chunk_id(self) -> str:
-        return f"{self.domain}-{self.index:04d}"
+        return f"{self.domain}-{self.doc_ordinal:03d}-{self.index:04d}"
 
 
 def split_sentences(paragraph: str) -> list[str]:
@@ -42,8 +46,12 @@ def chunk_document(
     domain: str,
     chunk_size: int = 600,
     overlap: int = 50,
+    doc_ordinal: int = 0,
 ) -> list[Chunk]:
-    """把一篇文档切成语义切片。"""
+    """把一篇文档切成语义切片。
+
+    doc_ordinal 是文档在语料中的全局序号，用于保证 chunk_id 全局唯一。
+    """
     if overlap >= chunk_size:
         raise ValueError("overlap 必须小于 chunk_size")
 
@@ -78,7 +86,13 @@ def chunk_document(
             prev_tail = segments[idx - 1][-overlap:]
             body = prev_tail + segment
         chunks.append(
-            Chunk(text=body, index=idx, source=source, domain=domain)
+            Chunk(
+                text=body,
+                index=idx,
+                source=source,
+                domain=domain,
+                doc_ordinal=doc_ordinal,
+            )
         )
     return chunks
 

@@ -74,19 +74,14 @@ async def kb_stats(
 
 @router.post("/kb/rebuild", response_model=RebuildResponse, summary="重建知识库")
 async def kb_rebuild(
-    store: VectorStore = Depends(deps.get_store),
-    embedder: Embedder = Depends(deps.get_embedder),
-    gateway: LLMGateway = Depends(deps.get_gateway),
+    service: KnowledgeService = Depends(deps.get_knowledge_service),
 ) -> RebuildResponse:
     """重新扫描 data/docs 并重建向量索引。
 
     走 HTTP 而不是脚本，是为了让运维（和你自己）无需登录服务器就能重建。
+    重建逻辑在服务层，与命令行入口 scripts/ingest.py 共用同一份实现。
     """
-    from ..scripts.ingest import rebuild_knowledge_base
-
-    result = await rebuild_knowledge_base(
-        settings=gateway.settings, store=store, embedder=embedder
-    )
+    result = await service.rebuild()
     return RebuildResponse(**result)
 
 

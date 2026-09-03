@@ -65,7 +65,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.agent_service = AgentService(
         gateway=gateway, store=store, embedder=embedder, top_k=settings.top_k
     )
-    app.state.knowledge_service = KnowledgeService(store=store, embedder=embedder)
+    app.state.knowledge_service = KnowledgeService(
+        store=store, embedder=embedder, settings=settings
+    )
 
     logger.info(
         "startup.ready",

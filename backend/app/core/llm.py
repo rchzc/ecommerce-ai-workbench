@@ -245,20 +245,37 @@ class LLMGateway:
         temperature: float = 0.3,
         force_tier: str | None = None,
     ) -> AsyncIterator[str]:
-        """流式调用，逐块产出文本。用于 SSE 打字机效果。"""
+        """流式调用，逐块产出文本。用于 SSE 打字机效果。
+
+        关键点：必须带上 response_format 强制 JSON 模式。
+        否则模型在流式下常常吐出 Python 风格的单引号字典（{'key': 'value'}），
+        前端 JSON.parse 会直接失败，只能显示一串原始文本 —— 演示时非常致命。
+        """
         model = self.resolve_model(f"{system}\n{user}", force_tier)
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": temperature,
+            "stream": True,
+            "response_format": {"type": "json_object"},
+        }
         try:
-            stream = await self._client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                temperature=temperature,
-                stream=True,
-            )
+            stream = await self._client.chat.completions.create(**kwargs)
         except Exception as exc:
-            raise ModelCallError(f"模型流式调用失败: {exc}") from exc
+            # 部分厂商（如 DeepSeek）不支持 response_format，降级为不带该参数重试。
+            # 此时输出可能是单引号字典，靠前端容错解析兜底。
+            logger.warning(
+                "llm.stream.json_mode_unsupported",
+                extra={"model": model, "error": str(exc)[:200]},
+            )
+            kwargs.pop("response_format")
+            try:
+                stream = await self._client.chat.completions.create(**kwargs)
+            except Exception as exc2:
+                raise ModelCallError(f"模型流式调用失败: {exc2}") from exc2
 
         collected: list[str] = []
         async for chunk in stream:

@@ -8,15 +8,29 @@
 from __future__ import annotations
 
 import logging
+import os
+import time
 from typing import Any, AsyncIterator
 
 from ..agents import create_agent, list_agents
+from ..config import Settings
 from ..core.embeddings import Embedder
 from ..core.llm import LLMGateway
+from ..core.rag import chunk_document, load_documents
 from ..core.vectorstore import VectorStore
 from ..errors import NotFoundError
 
 logger = logging.getLogger(__name__)
+
+# 知识库源文档目录：backend/data/docs
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DOCS_DIR = os.path.join(BACKEND_DIR, "data", "docs")
+
+# 每批向量化的文本数。
+# 阿里云百炼 text-embedding-v3 单次最多 10 条，超过会报
+# "batch size is invalid, it should not be larger than 10"。
+# 取各厂商公共下限，换 provider 不用改代码。
+BATCH_SIZE = 10
 
 
 class AgentService:
@@ -76,11 +90,23 @@ class AgentService:
 
 
 class KnowledgeService:
-    """知识库管理服务。"""
+    """知识库管理服务：统计 + 重建索引。
 
-    def __init__(self, store: VectorStore, embedder: Embedder) -> None:
+    重建逻辑放在服务层而不是脚本里，是为了让 HTTP 接口和命令行共用同一份实现 ——
+    之前脚本被 API 反向 import，导致跨包导入失败，这是分层没做干净的后果。
+    """
+
+    def __init__(
+        self,
+        store: VectorStore,
+        embedder: Embedder,
+        settings: Settings | None = None,
+        docs_dir: str = DOCS_DIR,
+    ) -> None:
         self.store = store
         self.embedder = embedder
+        self.settings = settings
+        self.docs_dir = docs_dir
 
     def stats(self) -> dict[str, Any]:
         return {
@@ -90,3 +116,63 @@ class KnowledgeService:
 
     def usage_snapshot(self, gateway: LLMGateway) -> dict[str, Any]:
         return gateway.usage.snapshot()
+
+    async def rebuild(self) -> dict[str, Any]:
+        """扫描 docs_dir → 切分 → 分批向量化 → 重建向量索引。
+
+        全流程在一个方法里，HTTP 与 CLI 两种入口行为完全一致。
+        """
+        if self.settings is None:
+            raise RuntimeError("KnowledgeService 缺少 settings，无法重建知识库")
+
+        started = time.perf_counter()
+        documents = load_documents(self.docs_dir)
+        if not documents:
+            raise RuntimeError(f"未在 {self.docs_dir} 下找到任何 .md 文档")
+
+        all_chunks = []
+        for doc_ordinal, (domain, filename, content) in enumerate(documents):
+            chunks = chunk_document(
+                content,
+                source=filename,
+                domain=domain,
+                chunk_size=self.settings.chunk_size,
+                overlap=self.settings.chunk_overlap,
+                # 传入全局序号，保证 chunk_id 不跨文档重复
+                doc_ordinal=doc_ordinal,
+            )
+            all_chunks.extend(chunks)
+
+        # 写入前自检：ID 必须唯一，否则 ChromaDB 会拒绝整批
+        ids_all = [c.chunk_id for c in all_chunks]
+        if len(set(ids_all)) != len(ids_all):
+            dupes = sorted({i for i in ids_all if ids_all.count(i) > 1})[:5]
+            raise RuntimeError(f"切片 ID 重复，写入会失败：{dupes}")
+
+        self.store.reset()
+
+        total = len(all_chunks)
+        for start in range(0, total, BATCH_SIZE):
+            batch = all_chunks[start : start + BATCH_SIZE]
+            texts = [c.text for c in batch]
+            vectors = await self.embedder.embed(texts)
+            self.store.add(
+                ids=[c.chunk_id for c in batch],
+                texts=texts,
+                metadatas=[
+                    {"source": c.source, "domain": c.domain, "index": c.index}
+                    for c in batch
+                ],
+                embeddings=vectors if vectors else None,
+            )
+            done = min(start + BATCH_SIZE, total)
+            logger.info("kb.rebuild.progress", extra={"done": done, "total": total})
+
+        elapsed = round((time.perf_counter() - started) * 1000, 2)
+        logger.info("kb.rebuild.done", extra={"chunks": total, "elapsed_ms": elapsed})
+        return {
+            "chunks": total,
+            "files": len(documents),
+            "embedding_mode": self.embedder.mode,
+            "elapsed_ms": elapsed,
+        }
