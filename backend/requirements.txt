@@ -1,0 +1,16 @@
+# ===== Web 框架 =====
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9
+
+# ===== 数据校验 =====
+pydantic>=2.6
+
+# ===== 大模型（OpenAI 兼容协议，百炼 / DeepSeek / OpenAI / Ollama 通用）=====
+openai>=1.14
+
+# ===== 向量库 =====
+chromadb>=0.5
+
+# ===== 配置 =====
+python-dotenv>=1.0

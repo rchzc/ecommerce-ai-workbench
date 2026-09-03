@@ -1,0 +1,32 @@
+# 环境变量（含 API Key，绝不上传）
+.env
+backend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# 向量库（运行时产物，可重建）
+backend/chroma_db/
+backend/data/chroma/
+backend/data/vectorstore/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+logs/

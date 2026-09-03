@@ -1,0 +1,155 @@
+:root {
+  --bg: #0f1117;
+  --bg-soft: #171a23;
+  --bg-card: #1c2030;
+  --border: #2a2f40;
+  --text: #e6e9f0;
+  --text-dim: #9aa3b8;
+  --accent: #4f8cff;
+  --accent-soft: #1b2a4a;
+  --green: #34d399;
+  --amber: #fbbf24;
+  --red: #f87171;
+  --radius: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ---------- 顶栏 ---------- */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 24px; border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #141823, #0f1117);
+}
+.brand { display: flex; align-items: center; gap: 14px; }
+.brand .logo {
+  font-size: 28px; color: var(--accent);
+  width: 44px; height: 44px; display: grid; place-items: center;
+  background: var(--accent-soft); border-radius: 12px;
+}
+.brand h1 { font-size: 18px; margin: 0; }
+.brand p { margin: 2px 0 0; font-size: 12px; color: var(--text-dim); }
+
+.badge {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; padding: 7px 12px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg-card);
+}
+.badge.ok { color: var(--green); }
+.badge.off { color: var(--red); }
+.badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+.badge-sub { color: var(--text-dim); }
+
+/* ---------- 布局 ---------- */
+.layout { flex: 1; display: grid; grid-template-columns: 240px 1fr 320px; gap: 16px; padding: 16px 24px; }
+.sidebar { display: flex; flex-direction: column; gap: 8px; }
+.sidebar.right { gap: 10px; }
+.sidebar-title {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--text-dim); margin-bottom: 4px;
+}
+
+.agent-item {
+  text-align: left; padding: 11px 13px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--text); cursor: pointer; transition: .15s;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.agent-item:hover { border-color: var(--accent); }
+.agent-item.active { border-color: var(--accent); background: var(--accent-soft); }
+.agent-name { font-weight: 600; font-size: 14px; }
+.agent-desc { font-size: 11px; color: var(--text-dim); line-height: 1.4; }
+
+/* ---------- 主区 ---------- */
+.main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px 20px;
+}
+.card h2 { margin: 0 0 14px; font-size: 16px; }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field.full { grid-column: 1 / -1; }
+.field-label { font-size: 13px; display: flex; gap: 8px; align-items: baseline; }
+.field-hint { font-style: normal; font-size: 11px; color: var(--amber); }
+.field-example { font-size: 11px; color: var(--text-dim); }
+.field input, .field textarea, .field select {
+  background: var(--bg-soft); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; padding: 9px 11px; font-size: 13px; font-family: inherit;
+  resize: vertical;
+}
+.field input:focus, .field textarea:focus, .field select:focus {
+  outline: none; border-color: var(--accent);
+}
+
+.actions { display: flex; align-items: center; gap: 14px; margin-top: 16px; }
+.btn {
+  border: none; border-radius: 9px; padding: 10px 22px; font-size: 14px;
+  font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.1); }
+.btn.stop { background: var(--red); color: #fff; }
+.hint { font-size: 12px; color: var(--text-dim); }
+.hint.big { font-size: 14px; padding: 30px 0; text-align: center; }
+
+.result-header { display: flex; align-items: center; justify-content: space-between; }
+.result-card { min-height: 280px; }
+.result-scroll { max-height: 60vh; overflow: auto; }
+.stream-text {
+  white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.6;
+  margin: 0; color: var(--text);
+}
+.error-box { color: var(--red); white-space: pre-wrap; font-size: 13px; }
+
+.route {
+  font-size: 12px; padding: 4px 10px; border-radius: 999px;
+  display: inline-flex; gap: 6px; align-items: center;
+  background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent);
+}
+.route.heavy { background: #3a1f1f; color: var(--red); border-color: var(--red); }
+.route em { font-style: normal; color: var(--text-dim); }
+
+.timing { margin-top: 14px; font-size: 12px; color: var(--text-dim); }
+
+/* ---------- JSON 视图 ---------- */
+.jv-obj { display: flex; flex-direction: column; gap: 10px; }
+.jv-row { display: grid; grid-template-columns: 180px 1fr; gap: 12px; align-items: start; }
+.jv-key { font-weight: 600; color: var(--accent); font-size: 13px; }
+.jv-val { font-size: 13px; line-height: 1.6; }
+.jv-list { margin: 4px 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.muted { color: var(--text-dim); }
+
+/* ---------- 知识侧栏 ---------- */
+.source {
+  background: var(--bg-soft); border: 1px solid var(--border);
+  border-radius: 9px; padding: 10px 12px; font-size: 12px;
+}
+.source-meta { display: flex; justify-content: space-between; margin-bottom: 5px; }
+.source-domain {
+  background: var(--accent-soft); color: var(--accent);
+  padding: 1px 8px; border-radius: 6px; font-size: 11px;
+}
+.source-score { color: var(--text-dim); font-size: 11px; }
+.source-source { color: var(--amber); font-size: 11px; margin-bottom: 5px; word-break: break-all; }
+.source-text { margin: 0; color: var(--text); line-height: 1.5; max-height: 110px; overflow: auto; }
+
+.footer {
+  padding: 10px 24px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-dim); font-family: ui-monospace, monospace;
+}
+
+@media (max-width: 1080px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar.right { order: 3; }
+}

@@ -1,0 +1,22 @@
+services:
+  workbench:
+    build: .
+    image: ecommerce-ai-workbench:latest
+    container_name: ecommerce-ai-workbench
+    ports:
+      - "8000:8000"
+    environment:
+      # 运行时注入密钥，不要写进镜像
+      - LLM_PROVIDER=dashscope
+      - LLM_API_KEY=${LLM_API_KEY}
+      - TOP_K=4
+      - CHUNK_SIZE=600
+      - CHUNK_OVERLAP=50
+      - REQUEST_TIMEOUT=120
+    volumes:
+      # 知识库向量索引持久化，容器重建不丢
+      - kb_data:/app/backend/chroma_db
+    restart: unless-stopped
+
+volumes:
+  kb_data:
