@@ -20,6 +20,7 @@ backend/data/vectorstore/
 node_modules/
 dist/
 .vite/
+*.tsbuildinfo
 
 # 编辑器 / 系统
 .vscode/
