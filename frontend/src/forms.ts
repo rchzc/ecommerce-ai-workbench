@@ -53,3 +53,56 @@ export function defaultPayload(agent: string): Record<string, string> {
   }
   return payload
 }
+
+// 一键填入的演示数据：现场演示不用手打字，点一下直接跑
+export const AGENT_EXAMPLES: Record<string, Record<string, string>> = {
+  selection: {
+    category: '便携榨汁杯',
+    market: '美国',
+    budget: '首单 3 万人民币',
+    notes: '工厂在宁波，有现成模具，想做差异化杯型',
+  },
+  listing: {
+    product: '不锈钢保温杯 500ml',
+    features: '12 小时长效保温\n一键弹盖，单手可开\n食品级 304 内胆\n双重防漏密封圈\n磨砂防滑杯身',
+    lang: 'en',
+  },
+  review: {
+    product: '无线蓝牙耳机',
+    reviews:
+      '音质真的很惊艳，低音很足，戴一天也不累。\n连接很稳，没有断连过。\n但是电池太不耐用了，半天就没电。\n充电盒盖子太松，放包里会自己打开。\n说明书全是英文，看不懂怎么配对。\n第三次买了，送朋友都说好。\n左耳那只声音比右耳小，是不是次品？\n物流太慢了，等了十几天。',
+    notes: '想知道负面评论主要集中在哪，优先改什么',
+  },
+  ads: {
+    acos: '0.42',
+    ctr: '0.003',
+    cvr: '0.06',
+    spend: '$50',
+    sales: '$120',
+    notes: '自动广告投放三周，主要靠广泛匹配',
+  },
+  logistics: {
+    destination: '美国洛杉矶',
+    weight: '12kg / 箱',
+    quantity: '800 件',
+    notes: '要在黑五前到仓，预算尽量压低',
+  },
+  support: {
+    question: '你们的产品用了一周就坏了，必须全额退款不然我给差评！',
+    order_info: '订单 #A123，已发货 5 天',
+    lang: 'zh',
+  },
+}
+
+// 智能体视觉标识：图标 key + 主题色 + 一句话定位
+export const AGENT_META: Record<
+  string,
+  { label: string; tagline: string; color: string; icon: string }
+> = {
+  selection: { label: '选品分析', tagline: '能不能做，值不值得做', color: '#5b8def', icon: 'target' },
+  listing: { label: 'Listing 生成', tagline: '标题 · 五点 · 关键词', color: '#8b5cf6', icon: 'doc' },
+  review: { label: '评论洞察', tagline: '差评里藏着改品方向', color: '#06b6d4', icon: 'chat' },
+  ads: { label: '广告诊断', tagline: '钱烧在哪，怎么止损', color: '#f59e0b', icon: 'chart' },
+  logistics: { label: '物流方案', tagline: '渠道对比与成本时效', color: '#10b981', icon: 'truck' },
+  support: { label: '客服话术', tagline: '合规回复 · 升级判断', color: '#f43f5e', icon: 'shield' },
+}

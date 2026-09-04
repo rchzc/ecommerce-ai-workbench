@@ -1,29 +1,39 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AgentMeta, FormField, HealthResponse, RetrievedItem, SSEEvent } from './types'
-import { fetchAgents, fetchHealth, streamAgent } from './api'
-import { AGENT_FORMS, defaultPayload } from './forms'
+import type { HealthResponse, RetrievedItem } from './types'
+import { fetchHealth, streamAgent } from './api'
+import { AGENT_EXAMPLES, AGENT_FORMS, AGENT_META, defaultPayload } from './forms'
+import { AgentResultView } from './components/Results'
+import { Icon } from './components/Icons'
 import './styles.css'
 
 type RunState = 'idle' | 'running' | 'done' | 'error'
 
+interface Telemetry {
+  model?: string
+  tier?: string
+  hits?: number
+  retrieveMs?: number
+  elapsedMs?: number
+}
+
 export default function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null)
-  const [agents, setAgents] = useState<AgentMeta[]>([])
-  const [active, setActive] = useState<string>('selection')
+  const [active, setActive] = useState('selection')
   const [payload, setPayload] = useState<Record<string, string>>(defaultPayload('selection'))
   const [state, setState] = useState<RunState>('idle')
-  const [error, setError] = useState<string>('')
-  const [rawText, setRawText] = useState<string>('') // 流式累积的模型文本（含 JSON）
-  const [rawJson, setRawJson] = useState<Record<string, unknown> | null>(null)
-  const [meta, setMeta] = useState<SSEEvent | null>(null)
+  const [error, setError] = useState('')
+  const [streamText, setStreamText] = useState('')
+  const [data, setData] = useState<Record<string, unknown> | null>(null)
+  const [tele, setTele] = useState<Telemetry>({})
   const [sources, setSources] = useState<RetrievedItem[]>([])
-  const [timing, setTiming] = useState<{ elapsed_ms?: number; generate_ms?: number }>({})
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     fetchHealth().then(setHealth).catch(() => {})
-    fetchAgents().then(setAgents).catch(() => {})
   }, [])
+
+  const meta = AGENT_META[active]
+  const fields = AGENT_FORMS[active] || []
 
   function selectAgent(name: string) {
     setActive(name)
@@ -34,15 +44,14 @@ export default function App() {
   function resetRun() {
     setState('idle')
     setError('')
-    setRawText('')
-    setRawJson(null)
-    setMeta(null)
+    setStreamText('')
+    setData(null)
+    setTele({})
     setSources([])
-    setTiming({})
   }
 
-  function onField(key: string, value: string) {
-    setPayload((p) => ({ ...p, [key]: value }))
+  function fillExample() {
+    setPayload({ ...defaultPayload(active), ...(AGENT_EXAMPLES[active] || {}) })
   }
 
   async function onRun() {
@@ -55,29 +64,25 @@ export default function App() {
     const clean = Object.fromEntries(
       Object.entries(payload).filter(([, v]) => String(v).trim() !== ''),
     )
-
     let text = ''
-
     try {
       for await (const ev of streamAgent(active, clean, ctrl.signal)) {
         if (ev.type === 'meta') {
-          setMeta(ev)
+          setTele({ model: ev.model, tier: ev.tier, hits: ev.hits, retrieveMs: ev.retrieve_ms })
         } else if (ev.type === 'knowledge') {
           setSources(ev.items)
         } else if (ev.type === 'delta') {
           text += ev.text
-          setRawText(text)
+          setStreamText(text)
         } else if (ev.type === 'done') {
-          setTiming({ elapsed_ms: ev.elapsed_ms, generate_ms: ev.generate_ms })
+          setTele((t) => ({ ...t, elapsedMs: ev.elapsed_ms }))
         } else if (ev.type === 'error') {
           setError(ev.message || '执行出错')
           setState('error')
           return
         }
       }
-      // 流结束后把累积的文本尝试解析为结构化 JSON
-      const parsed = parseLenient(text)
-      setRawJson(parsed)
+      setData(parseLenient(text))
       setState('done')
     } catch (e) {
       if ((e as Error).name === 'AbortError') return
@@ -86,236 +91,272 @@ export default function App() {
     }
   }
 
-  function onStop() {
-    abortRef.current?.abort()
-    setState('idle')
-  }
-
-  const fields = AGENT_FORMS[active] || []
-  const activeMeta = agents.find((a) => a.name === active)
-
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <span className="logo">◈</span>
-          <div>
-            <h1>跨境电商 AI 运营工作台</h1>
-            <p>RAG + 多 Agent · 一人全栈交付 · 现场可跑</p>
-          </div>
-        </div>
-        <HealthBadge health={health} />
-      </header>
+      <Header health={health} />
 
       <div className="layout">
-        {/* 左：Agent 列表 */}
-        <aside className="sidebar">
-          <div className="sidebar-title">运营智能体</div>
-          {agents.length === 0 && <div className="hint">加载中…</div>}
-          {agents.map((a) => (
+        {/* 左：智能体卡片 */}
+        <aside className="col-left">
+          <p className="col-title">运营智能体</p>
+          {Object.entries(AGENT_META).map(([key, m]) => (
             <button
-              key={a.name}
-              className={`agent-item ${a.name === active ? 'active' : ''}`}
-              onClick={() => selectAgent(a.name)}
+              key={key}
+              className={`agent-card ${key === active ? 'on' : ''}`}
+              style={{ '--ac': m.color } as React.CSSProperties}
+              onClick={() => selectAgent(key)}
             >
-              <span className="agent-name">{a.name}</span>
-              <span className="agent-desc">{a.description}</span>
+              <span className="ag-icon">
+                <Icon name={m.icon} size={19} />
+              </span>
+              <span className="ag-text">
+                <strong>{m.label}</strong>
+                <em>{m.tagline}</em>
+              </span>
             </button>
           ))}
         </aside>
 
-        {/* 中：表单 + 结果 */}
-        <main className="main">
-          <section className="card form-card">
-            <h2>{activeMeta?.description || '输入需求'}</h2>
+        {/* 中：输入 + 结果 */}
+        <main className="col-main">
+          <section className="panel">
+            <header className="panel-head">
+              <h2>
+                <Icon name={meta.icon} size={17} />
+                {meta.label}
+              </h2>
+              <button className="ghost-btn" onClick={fillExample}>
+                <Icon name="spark" size={14} />
+                填入示例
+              </button>
+            </header>
+
             <div className="form-grid">
               {fields.map((f) => (
-                <FieldInput key={f.key} field={f} value={payload[f.key] || ''} onChange={(v) => onField(f.key, v)} />
+                <label key={f.key} className={`field ${f.type === 'textarea' ? 'full' : ''}`}>
+                  <span className="fl">
+                    {f.label}
+                    {f.hint && <em>{f.hint}</em>}
+                  </span>
+                  {f.type === 'textarea' ? (
+                    <textarea
+                      rows={3}
+                      value={payload[f.key] || ''}
+                      placeholder={f.placeholder}
+                      onChange={(e) => setPayload((p) => ({ ...p, [f.key]: e.target.value }))}
+                    />
+                  ) : f.type === 'select' ? (
+                    <select
+                      value={payload[f.key] || ''}
+                      onChange={(e) => setPayload((p) => ({ ...p, [f.key]: e.target.value }))}
+                    >
+                      {(f.options || []).map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type={f.type === 'number' ? 'number' : 'text'}
+                      step="any"
+                      value={payload[f.key] || ''}
+                      placeholder={f.placeholder}
+                      onChange={(e) => setPayload((p) => ({ ...p, [f.key]: e.target.value }))}
+                    />
+                  )}
+                </label>
               ))}
             </div>
-            <div className="actions">
+
+            <footer className="panel-foot">
               {state === 'running' ? (
-                <button className="btn stop" onClick={onStop}>
+                <button className="run stop" onClick={() => abortRef.current?.abort()}>
                   停止
                 </button>
               ) : (
-                <button className="btn primary" onClick={onRun}>
-                  运行 {active}
+                <button className="run" onClick={onRun} style={{ '--ac': meta.color } as React.CSSProperties}>
+                  <Icon name="bolt" size={16} />
+                  运行分析
                 </button>
               )}
-              <span className="hint">
-                流式调用 · 先检索知识库 → 自动选模型 → 逐字输出
-              </span>
-            </div>
+              <span className="foot-note">先检索知识库 → 自动选模型 → 流式输出</span>
+            </footer>
           </section>
 
-          <section className="card result-card">
-            <div className="result-header">
-              <h2>输出</h2>
-              {meta && <RouteChip meta={meta} />}
-            </div>
+          <section className="panel result">
             <ResultBody
               state={state}
               error={error}
-              rawText={rawText}
-              rawJson={rawJson}
-              timing={timing}
+              streamText={streamText}
+              data={data}
+              agent={active}
+              tele={tele}
+              chunks={health?.knowledge_chunks ?? 0}
             />
           </section>
         </main>
 
-        {/* 右：知识库 + 路由 */}
-        <aside className="sidebar right">
-          <div className="sidebar-title">检索到的知识</div>
-          {sources.length === 0 ? (
-            <div className="hint">{state === 'running' ? '检索中…' : '运行后显示命中片段'}</div>
-          ) : (
-            sources.map((s, i) => (
-              <div className="source" key={i}>
-                <div className="source-meta">
-                  <span className="source-domain">{s.domain}</span>
-                  <span className="source-score">相关度 {Number(s.score).toFixed(3)}</span>
+        {/* 右：遥测 + 知识 */}
+        <aside className="col-right">
+          <p className="col-title">本次调用</p>
+          <div className="panel tele">
+            {tele.model ? (
+              <>
+                <div className="tele-row">
+                  <span>路由模型</span>
+                  <strong className={tele.tier === 'heavy' ? 'heavy' : 'light'}>
+                    {tele.model}
+                    <em>{tele.tier === 'heavy' ? '重量' : '轻量'}</em>
+                  </strong>
                 </div>
-                <div className="source-source">{s.source}</div>
-                <p className="source-text">{s.text}</p>
-              </div>
-            ))
-          )}
+                <div className="tele-row">
+                  <span>知识命中</span>
+                  <strong>{tele.hits ?? 0} 条</strong>
+                </div>
+                {tele.retrieveMs != null && (
+                  <div className="tele-row">
+                    <span>检索耗时</span>
+                    <strong>{Math.round(tele.retrieveMs)} ms</strong>
+                  </div>
+                )}
+                {tele.elapsedMs != null && (
+                  <div className="tele-row">
+                    <span>总耗时</span>
+                    <strong>{(tele.elapsedMs / 1000).toFixed(1)} s</strong>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="muted sm">运行后显示路由与耗时</p>
+            )}
+          </div>
+
+          <p className="col-title">
+            命中的知识
+            {sources.length > 0 && <span className="cnt">{sources.length}</span>}
+          </p>
+          <div className="src-list">
+            {sources.length === 0 ? (
+              <p className="muted sm">{state === 'running' ? '检索中…' : '运行后显示命中的知识片段'}</p>
+            ) : (
+              sources.map((s, i) => (
+                <div className="src" key={i}>
+                  <div className="src-top">
+                    <span className="chip dom">{s.domain}</span>
+                    <span className="score">{Math.round(Number(s.score) * 100)}%</span>
+                  </div>
+                  <p className="src-file">{s.source}</p>
+                  <p className="src-text">{s.text}</p>
+                </div>
+              ))
+            )}
+          </div>
         </aside>
       </div>
-
-      <footer className="footer">
-        后端 /api/health · /api/agents · /agent/{'{name}'} · /agent/{'{name}'}/stream · 单容器交付（FastAPI 托管前端）
-      </footer>
     </div>
   )
 }
 
-// ---------- 子组件 ----------
+// ---------------------------------------------------------------- 子组件
 
-function HealthBadge({ health }: { health: HealthResponse | null }) {
-  if (!health) return <div className="badge off">后端未连接</div>
+function Header({ health }: { health: HealthResponse | null }) {
   return (
-    <div className="badge ok" title={`${health.provider_label} · 知识库 ${health.knowledge_chunks} 切片`}>
-      <span className="dot" />
-      {health.provider_label} · {health.model_light}/{health.model_heavy}
-      <span className="badge-sub">· {health.knowledge_chunks} 切片</span>
-    </div>
-  )
-}
-
-function FieldInput({ field, value, onChange }: { field: FormField; value: string; onChange: (v: string) => void }) {
-  return (
-    <label className={`field ${field.type === 'textarea' ? 'full' : ''}`}>
-      <span className="field-label">
-        {field.label}
-        {field.hint && <em className="field-hint">{field.hint}</em>}
-      </span>
-      {field.type === 'textarea' ? (
-        <textarea
-          rows={3}
-          value={value}
-          placeholder={field.placeholder}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      ) : field.type === 'select' ? (
-        <select value={value} onChange={(e) => onChange(e.target.value)}>
-          {(field.options || []).map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <input
-          type={field.type === 'number' ? 'number' : 'text'}
-          step="any"
-          value={value}
-          placeholder={field.placeholder}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      )}
-      {field.example && (
-        <span className="field-example">
-          示例：{field.example}
+    <header className="topbar">
+      <div className="brand">
+        <span className="logo">
+          <Icon name="spark" size={22} />
         </span>
-      )}
-    </label>
-  )
-}
-
-function RouteChip({ meta }: { meta: SSEEvent }) {
-  if (meta.type !== 'meta') return null
-  return (
-    <span className={`route ${meta.tier}`}>
-      {meta.tier === 'heavy' ? '重量模型' : '轻量模型'} · {meta.model}
-      <em>路由分 {meta.route_score}</em>
-    </span>
+        <div>
+          <h1>跨境电商 AI 运营工作台</h1>
+          <p>RAG 知识库 + 6 个运营智能体 · 真实模型调用</p>
+        </div>
+      </div>
+      <div className="status">
+        {health ? (
+          <>
+            <span className="pill ok">
+              <i className="dot-live" />
+              {health.provider_label}
+            </span>
+            <span className="pill">
+              {health.model_light} / {health.model_heavy}
+            </span>
+            <span className="pill strong">{health.knowledge_chunks} 切片</span>
+          </>
+        ) : (
+          <span className="pill off">后端未连接</span>
+        )}
+      </div>
+    </header>
   )
 }
 
 function ResultBody({
   state,
   error,
-  rawText,
-  rawJson,
-  timing,
+  streamText,
+  data,
+  agent,
+  tele,
+  chunks,
 }: {
   state: RunState
   error: string
-  rawText: string
-  rawJson: Record<string, unknown> | null
-  timing: { elapsed_ms?: number; generate_ms?: number }
+  streamText: string
+  data: Record<string, unknown> | null
+  agent: string
+  tele: Telemetry
+  chunks: number
 }) {
-  if (state === 'error') return <pre className="error-box">{error}</pre>
-  if (state === 'idle') return <div className="hint big">选择左上角的智能体，填写需求后点「运行」。</div>
-  if (state === 'running' && !rawText)
-    return <div className="hint big">正在检索知识库并调用模型…</div>
-  if (rawJson) {
+  if (state === 'error')
     return (
-      <div className="result-scroll">
-        <JsonView data={rawJson} />
-        {timing.elapsed_ms != null && (
-          <div className="timing">
-            总耗时 {timing.elapsed_ms}ms · 生成 {timing.generate_ms ?? '-'}ms
-          </div>
-        )}
+      <div className="err-box">
+        <Icon name="alert" size={16} />
+        <span>{error}</span>
       </div>
     )
-  }
-  // 流式过程中还没解析出来：直接显示原始文本（打字机效果）
-  return <pre className="stream-text">{rawText}</pre>
-}
 
-function JsonView({ data }: { data: unknown }) {
-  if (data == null) return <span className="muted">null</span>
-  if (typeof data !== 'object') return <span>{String(data)}</span>
-  if (Array.isArray(data)) {
+  if (state === 'idle')
     return (
-      <ul className="jv-list">
-        {data.map((item, i) => (
-          <li key={i}>
-            <JsonView data={item} />
-          </li>
-        ))}
-      </ul>
+      <div className="empty">
+        <span className="empty-ico">
+          <Icon name="bolt" size={26} />
+        </span>
+        <h3>选一个智能体，点「填入示例」再运行</h3>
+        <p>
+          {chunks > 0
+            ? `先检索 ${chunks} 条运营知识切片，再交给模型输出结构化结论`
+            : '先检索运营知识切片，再交给模型输出结构化结论'}
+        </p>
+      </div>
     )
-  }
+
+  if (data) return <AgentResultView agent={agent} data={data} />
+
+  if (state === 'running' && !streamText)
+    return (
+      <div className="empty">
+        <span className="spinner" />
+        <h3>正在检索知识库…</h3>
+        <p>命中 {tele.hits ?? 0} 条，等待模型返回</p>
+      </div>
+    )
+
+  // 流式输出中：打字机效果
   return (
-    <div className="jv-obj">
-      {Object.entries(data as Record<string, unknown>).map(([k, v]) => (
-        <div className="jv-row" key={k}>
-          <span className="jv-key">{k}</span>
-          <span className="jv-val">
-            <JsonView data={v} />
-          </span>
-        </div>
-      ))}
+    <div className="streaming">
+      <span className="typing">
+        <i />
+        <i />
+        <i />
+      </span>
+      <pre className="stream-text">{streamText}</pre>
     </div>
   )
 }
 
-// 前端自己的轻量 JSON 容错：去围栏 + 截首对象（与后端 parse_json_lenient 思路一致）
+// 前端轻量 JSON 容错（与后端 parse_json_lenient 同思路）：直接解析 → 去围栏 → 截首对象
 function parseLenient(text: string): Record<string, unknown> | null {
   const t = text.trim()
   if (!t) return null
