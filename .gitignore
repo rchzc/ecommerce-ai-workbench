@@ -16,6 +16,9 @@ backend/chroma_db/
 backend/data/chroma/
 backend/data/vectorstore/
 
+# 连接器实时同步产生的数据（每次 sync 覆盖生成，不入库）
+backend/data/docs/**/live_*.md
+
 # Node
 node_modules/
 dist/

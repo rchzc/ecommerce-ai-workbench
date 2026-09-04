@@ -132,7 +132,7 @@ LLM_API_KEY=sk-xxx docker compose up -d
 │   │   ├── logging.py  结构化日志 + 请求 ID
 │   │   └── main.py     FastAPI 入口（生命周期 / 中间件 / 静态托管）
 │   ├── data/docs/      知识库源文件（21 篇，按领域分目录）
-│   └── scripts/        gen_docs.py（生成文档）/ ingest.py（建索引）
+│   └── scripts/        gen_docs.py（生成文档）/ sync_data.py（接入真实店铺数据）
 ├── frontend/           React 18 + Vite + TypeScript
 ├── Dockerfile          多阶段构建，单容器交付
 └── docker-compose.yml
@@ -143,3 +143,38 @@ LLM_API_KEY=sk-xxx docker compose up -d
 `backend/data/docs/` 下的 21 篇运营方法论由 `backend/scripts/gen_docs.py` 生成，
 按 `selection / listing / review / ads / logistics / support` 六个领域分目录。
 要扩充知识，编辑脚本里的 `DOCS` 字典后重跑，或直接在对应目录放 `.md` 文件再 `POST /api/kb/rebuild`。
+
+## 接入真实店铺数据（数据连接器）
+
+当前知识库是「文档驱动」：运营把业务文本粘贴进智能体即可出结果。要接客户**真实店铺数据**，
+只需新增一个数据连接器，把平台开放 API 的数据拉取、清洗后写入 `data/docs/<domain>/`，
+再 `POST /api/kb/rebuild` —— 智能体与 RAG **零改动**（它们只读知识层，不管数据来源）。
+这把「人粘贴」升级为「自动拉取」，是项目从 demo 走向生产的关键一步。
+
+### Shopify 连接器（已内置）
+
+```bash
+# 演示（无需凭证）：生成 mock 订单/评论写入知识库
+python scripts/sync_data.py --provider shopify --mock
+
+# 真实接入：在 backend/.env 填 SHOPIFY_SHOP / SHOPIFY_TOKEN 后
+python scripts/sync_data.py --provider shopify
+```
+
+- **订单**：走 Shopify REST Admin API（`orders.json`），作为客服 Agent 的真实上下文。
+- **评论**：Shopify 原生 API 不含评论，来自评论 App / CSV 导出（`data/import/reviews.csv`，
+  字段 `product,rating,content`）。这是真实情况，不伪造 API。
+- 写入 `data/docs/support/live_orders.md` 与 `data/docs/review/live_reviews.md`，每次同步覆盖；
+  这两个文件已被 gitignore，不会污染仓库。
+
+### 接其它平台
+
+新增 `backend/app/connectors/<platform>.py`，实现同样「拉取 -> 清洗 -> 写 data/docs -> rebuild」
+契约即可。亚马逊走 SP-API（需注册应用 + AWS 签名 + OAuth，门槛更高但最普遍），
+TikTok Shop / Temu / AliExpress 各有开放平台，逻辑一致。
+
+### 生产化待补（路线图，非当前承诺）
+
+- 定时调度（cron / worker）自动同步，而非手动跑脚本
+- 增量更新（只重建变化的切片）而非全量 rebuild
+- 接入后补认证（JWT）/ 限流 / 监控告警，才能放公网多租户使用
