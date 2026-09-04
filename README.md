@@ -34,7 +34,28 @@
 
 ## 快速开始
 
-### 1. 准备密钥
+### 方式一：Windows 一键启动（推荐）
+
+双击项目根目录的 **`启动.bat`**，脚本会自动完成：
+
+1. 检查虚拟环境与依赖
+2. 检查 `backend/.env` 中的 API Key（为空会拦截并提示，避免"跑起来却调不通"）
+3. 启动后端并自动打开浏览器 `http://127.0.0.1:8000`
+
+> 保持弹出的黑色窗口开启，关闭窗口即停止服务。
+
+首次使用需先按下面的「准备密钥」填好 Key。
+
+### 方式二：命令行启动
+
+```bash
+cd backend
+.venv/Scripts/activate        # Windows
+# 或：source .venv/bin/activate  # macOS / Linux
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+### 准备密钥
 
 ```bash
 cp backend/.env.example backend/.env
