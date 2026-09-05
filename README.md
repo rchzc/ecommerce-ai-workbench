@@ -29,6 +29,8 @@
 - **模型路由**：按任务复杂度规则自动选轻量 / 重量模型，简单任务不占用大模型额度。
 - **三级 JSON 容错解析**：直接解析 → 去 Markdown 围栏 → 截取首个完整对象；三级都失败直接报错，不把脏数据透传前端。
 - **RAG**：段落优先 + 句切 + 相邻重叠的三级切分，ChromaDB 持久化，按领域元数据过滤。
+- **检索重排（reranker）**：向量召回 top_k×2 候选后，用「语义分 + 词面重叠分」融合重排再取 top_k，
+  缓解纯向量召回"字面命中却被排后"的噪声。纯本地、不联网、可复现（见 `core/rerank.py`）。
 - **流式输出**：SSE 实现打字机效果，长任务不用干等。
 - **工程化**：集中校验配置（缺密钥启动即失败）、类型化错误 → 规范 JSON、请求 ID + 结构化日志、健康检查、单容器交付。
 
@@ -132,7 +134,7 @@ LLM_API_KEY=sk-xxx docker compose up -d
 │   │   ├── logging.py  结构化日志 + 请求 ID
 │   │   └── main.py     FastAPI 入口（生命周期 / 中间件 / 静态托管）
 │   ├── data/docs/      知识库源文件（21 篇，按领域分目录）
-│   └── scripts/        gen_docs.py（生成文档）/ sync_data.py（接入真实店铺数据）
+│   └── scripts/        gen_docs.py（生成文档）/ sync_data.py（接入真实店铺数据）/ eval_retrieval.py（检索质量评测）
 ├── frontend/           React 18 + Vite + TypeScript
 ├── Dockerfile          多阶段构建，单容器交付
 └── docker-compose.yml
@@ -178,3 +180,18 @@ TikTok Shop / Temu / AliExpress 各有开放平台，逻辑一致。
 - 定时调度（cron / worker）自动同步，而非手动跑脚本
 - 增量更新（只重建变化的切片）而非全量 rebuild
 - 接入后补认证（JWT）/ 限流 / 监控告警，才能放公网多租户使用
+
+## 检索质量评测
+
+别只凭"感觉准"。`scripts/eval_retrieval.py` 把检索质量变成可复现的数字：
+
+```bash
+python scripts/eval_retrieval.py            # 离线语料覆盖检查（不联网、不需 chromadb）
+python scripts/eval_retrieval.py --online   # 再跑在线向量召回，输出 Recall@k（需 LLM Key）
+```
+
+- **离线检查**：把 21 篇文档按现有切分切块，在每个业务域内用关键词排序，校验 6 个评测问题的
+  期望知识是否落在 top4。当前结果 **6/6 = 100% 覆盖**（证明知识库"覆盖"了这些问题且可达）。
+- **在线检查**：真实向量化 → 检索 → rerank 重排 → 校验命中，输出 **Recall@k**。
+- 评测集在脚本顶部 `EVAL_QUERIES`，覆盖选品 / Listing / 评论 / 广告 / 物流 / 客服六个域，可增删。
+- 诚实边界：这是**检索层**质量评测，不等同端到端回答准确率。

@@ -206,9 +206,15 @@ body {
 }
 
 .err-box {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: flex-start; gap: 10px;
   background: rgba(244, 63, 94, 0.09); border: 1px solid rgba(244, 63, 94, 0.3);
   color: var(--rose); padding: 14px 16px; border-radius: var(--r-sm); font-size: 13px;
+}
+.err-box > svg { flex: none; margin-top: 1px; }
+/* 解析失败时附带的模型原始输出，方便判断是模型乱答还是前端解析问题 */
+.raw-out {
+  margin: 10px 0 0; max-height: 200px; opacity: 0.72;
+  font-size: 12px; line-height: 1.6; color: var(--tx2);
 }
 
 /* ---------------------------------------------------------- 结果卡片通用 */

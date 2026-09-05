@@ -15,7 +15,10 @@ class AgentRequest(BaseModel):
     """
 
     payload: dict[str, Any] = Field(default_factory=dict)
-    stream: bool = False
+
+    # 说明：流式走独立的 POST /api/agent/{name}/stream 端点。
+    # 之前这里还有个 stream: bool 字段，但没有任何代码读它，
+    # 调用方看到会以为传 stream=true 就能切流式，实际仍是阻塞返回 —— 去掉避免误导。
 
     @field_validator("payload")
     @classmethod

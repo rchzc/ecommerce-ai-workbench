@@ -63,7 +63,11 @@ class KnowledgeBaseError(AppError):
 
 
 class ValidationError(AppError):
-    """输入不合法 —— 客户端问题。"""
+    """输入不合法 —— 客户端问题。
+
+    用于 Pydantic 结构校验覆盖不到的业务校验（如字段间约束、依赖外部字典的值）。
+    Pydantic 能表达的校验直接写在 schemas.py，由 FastAPI 自带 422 处理。
+    """
 
     status_code = 422
     code = "validation_error"

@@ -1,0 +1,6 @@
+# 开发依赖（测试 / 代码质量）
+# 安装：backend/.venv/Scripts/pip install -r requirements-dev.txt
+# 运行：backend/.venv/Scripts/python.exe -m pytest
+
+pytest>=8.0
+pytest-asyncio>=0.23

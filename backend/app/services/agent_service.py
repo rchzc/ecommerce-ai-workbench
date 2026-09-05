@@ -13,12 +13,13 @@ import time
 from typing import Any, AsyncIterator
 
 from ..agents import create_agent, list_agents
+from ..agents.base import BaseAgent
 from ..config import Settings
 from ..core.embeddings import Embedder
 from ..core.llm import LLMGateway
 from ..core.rag import chunk_document, load_documents
 from ..core.vectorstore import VectorStore
-from ..errors import NotFoundError
+from ..errors import ConfigError, KnowledgeBaseError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +53,21 @@ class AgentService:
     def available_agents(self) -> list[dict[str, str]]:
         return list_agents()
 
-    async def run(self, agent_name: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """执行指定 Agent，返回可序列化的结果。"""
+    def _get_agent(self, agent_name: str) -> BaseAgent:
+        """按名字取 Agent，未知名字转 404。
+
+        之前 run() 和 stream() 各自写了一遍同样的 try/except KeyError，
+        两处文案一旦改一处漏一处，就会给出不一致的报错。
+        """
         try:
-            agent = create_agent(agent_name)
+            return create_agent(agent_name)
         except KeyError:
             available = ", ".join(a["name"] for a in list_agents())
             raise NotFoundError(f"未知 Agent: {agent_name}，可用：{available}") from None
 
+    async def run(self, agent_name: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """执行指定 Agent，返回可序列化的结果。"""
+        agent = self._get_agent(agent_name)
         result = await agent.run(
             payload,
             gateway=self.gateway,
@@ -73,12 +81,7 @@ class AgentService:
         self, agent_name: str, payload: dict[str, Any]
     ) -> AsyncIterator[dict[str, Any]]:
         """流式执行指定 Agent，产出 SSE 事件字典。"""
-        try:
-            agent = create_agent(agent_name)
-        except KeyError:
-            available = ", ".join(a["name"] for a in list_agents())
-            raise NotFoundError(f"未知 Agent: {agent_name}，可用：{available}") from None
-
+        agent = self._get_agent(agent_name)
         async for event in agent.stream(
             payload,
             gateway=self.gateway,
@@ -114,21 +117,22 @@ class KnowledgeService:
             "embedding_mode": self.embedder.mode,
         }
 
-    def usage_snapshot(self, gateway: LLMGateway) -> dict[str, Any]:
-        return gateway.usage.snapshot()
-
     async def rebuild(self) -> dict[str, Any]:
         """扫描 docs_dir → 切分 → 分批向量化 → 重建向量索引。
 
         全流程在一个方法里，HTTP 与 CLI 两种入口行为完全一致。
+
+        错误一律用类型化异常：之前这里抛 RuntimeError，会被全局兜底成
+        500「服务内部错误」。但"没找到文档""ID 重复"都是使用者能自己修的问题，
+        报 500 既误导排查方向，也让调用方无法按 code 做分支处理。
         """
         if self.settings is None:
-            raise RuntimeError("KnowledgeService 缺少 settings，无法重建知识库")
+            raise ConfigError("KnowledgeService 缺少 settings，无法重建知识库")
 
         started = time.perf_counter()
         documents = load_documents(self.docs_dir)
         if not documents:
-            raise RuntimeError(f"未在 {self.docs_dir} 下找到任何 .md 文档")
+            raise KnowledgeBaseError(f"未在 {self.docs_dir} 下找到任何 .md 文档")
 
         all_chunks = []
         for doc_ordinal, (domain, filename, content) in enumerate(documents):
@@ -143,11 +147,13 @@ class KnowledgeService:
             )
             all_chunks.extend(chunks)
 
-        # 写入前自检：ID 必须唯一，否则 ChromaDB 会拒绝整批
+        # 写入前自检：ID 必须唯一，否则 ChromaDB 会拒绝整批。
+        # ids_all.count(i) 在循环里是 O(n^2)，21 篇文档量级无感；
+        # 文档量上千时应改成 Counter，这里保持直白。
         ids_all = [c.chunk_id for c in all_chunks]
         if len(set(ids_all)) != len(ids_all):
             dupes = sorted({i for i in ids_all if ids_all.count(i) > 1})[:5]
-            raise RuntimeError(f"切片 ID 重复，写入会失败：{dupes}")
+            raise KnowledgeBaseError(f"切片 ID 重复，写入会失败：{dupes}")
 
         self.store.reset()
 

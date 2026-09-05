@@ -58,6 +58,12 @@ class VectorStore:
             metadata={"hnsw:space": "cosine"},
         )
 
+    def _matched_count(self, where: dict | None) -> int:
+        """统计满足 where 条件的切片数（不取回内容，开销很小）。"""
+        got = self._collection.get(where=where, include=[])
+        ids = got.get("ids") or []
+        return len(ids)
+
     def add(
         self,
         ids: Sequence[str],
@@ -84,28 +90,45 @@ class VectorStore:
         *,
         domain: str,
         top_k: int,
+        query_text: str | None = None,
     ) -> list[RetrievedChunk]:
-        """按域过滤检索。domain="*" 表示不限制域（跨域检索）。"""
+        """按域过滤检索。domain="*" 表示不限制域（跨域检索）。
+
+        query_embedding 为 None 时（本地/无 embedding 场景）退回文本检索，
+        此时必须用真实 query_text —— 之前这里写死传空串，等于用空文本去检索，
+        返回的是库里排在最前面的任意切片，所谓"降级可用"实际是"降级即失效"。
+        """
         if self.count() == 0:
             raise KnowledgeBaseError(
-                "知识库为空，请先执行 python scripts/ingest.py 建立索引"
+                "知识库为空，请先调用 POST /api/kb/rebuild 或 python scripts/ingest.py 建立索引"
             )
 
         where = None if domain in ("*", "", "all") else {"domain": domain}
         kwargs: dict = {
-            "n_results": min(top_k, self.count()),
+            "n_results": max(1, min(top_k, self.count())),
             "where": where,
         }
         if query_embedding is not None:
             kwargs["query_embeddings"] = [list(query_embedding)]
         else:
-            # 无向量时退化成按文档文本检索（本地模型兜底场景）
-            kwargs["query_texts"] = [""]
+            kwargs["query_texts"] = [query_text or ""]
 
         try:
             result = self._collection.query(**kwargs)
         except Exception as exc:
-            raise KnowledgeBaseError(f"检索失败: {exc}") from exc
+            # 部分 ChromaDB 版本在「域内切片数 < n_results」时直接报错。
+            # 这时不是检索失败，只是该域知识较少 —— 按域内实际数量重试一次。
+            try:
+                matched = self._matched_count(where)
+            except Exception:  # 连计数都失败，说明是真故障
+                raise KnowledgeBaseError(f"检索失败: {exc}") from exc
+            if matched <= 0:
+                return []
+            kwargs["n_results"] = matched
+            try:
+                result = self._collection.query(**kwargs)
+            except Exception as exc2:
+                raise KnowledgeBaseError(f"检索失败: {exc2}") from exc2
 
         documents = result.get("documents") or [[]]
         metadatas = result.get("metadatas") or [[]]

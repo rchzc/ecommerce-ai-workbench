@@ -45,6 +45,36 @@ export const AGENT_FORMS: Record<string, FormField[]> = {
   ],
 }
 
+// 后端新增 Agent 时的兜底展示配置。
+// 之前 App.tsx 直接写 AGENT_META[active]，后端一旦多注册一个 Agent，
+// 这里取到 undefined，接着读 meta.icon 就整页白屏 ——
+// 而项目 README 恰恰宣称"新增 Agent 不需要改前端"。
+export const FALLBACK_AGENT_META = {
+  label: '智能体',
+  tagline: '通用分析',
+  color: '#64748b',
+  icon: 'spark',
+}
+
+export function getAgentMeta(agent: string) {
+  const known = AGENT_META[agent]
+  if (known) return known
+  return { ...FALLBACK_AGENT_META, label: agent || FALLBACK_AGENT_META.label }
+}
+
+// 未预置表单的 Agent（后端新注册）走这个通用输入框，保证"新增 Agent 前端零改动"
+export const GENERIC_FIELD: FormField = {
+  key: 'input',
+  label: '输入内容',
+  type: 'textarea',
+  placeholder: '粘贴你要分析的内容，或直接描述你的问题',
+  hint: '该智能体未预置表单，用自由文本输入',
+}
+
+export function getAgentForms(agent: string): FormField[] {
+  return AGENT_FORMS[agent] || []
+}
+
 export function defaultPayload(agent: string): Record<string, string> {
   const fields = AGENT_FORMS[agent] || []
   const payload: Record<string, string> = {}

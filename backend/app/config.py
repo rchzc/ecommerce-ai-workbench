@@ -13,14 +13,62 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+# 复用 errors.py 的类型化错误，避免同名类在两个模块各定义一份。
+# 之前 config.ConfigError 继承 Exception、errors.ConfigError 继承 AppError，
+# 两者同名不同类：捕获其中一个时另一个会漏掉，全局错误处理器也就失效了。
+from .errors import ConfigError  # noqa: F401  (对外 re-export，保持历史 import 路径可用)
+
 # 在读取环境变量之前加载 .env（位于 backend/.env），避免"没填配置却不报错"
 # 用绝对路径，避免依赖启动时的当前工作目录
 _ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
 load_dotenv(_ENV_PATH)
 
+# 目录约定（绝对路径，不依赖启动时的工作目录）：
+#   _THIS_DIR   = backend/app
+#   BACKEND_DIR = backend
+#   PROJECT_DIR = 仓库根
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = os.path.dirname(_THIS_DIR)
+PROJECT_DIR = os.path.dirname(BACKEND_DIR)
 
-class ConfigError(Exception):
-    """配置缺失或不合法。由 main.py 捕获并转为 503。"""
+
+# ---------------------------------------------------------------------------
+# 运行期路径与全局开关
+#
+# 单独暴露成函数，是因为这些值在「配置校验失败」时也必须可读：
+# main.py 创建应用时就要挂 CORS 中间件、算静态目录，而此时 Settings 还不存在。
+# 之前 main.py 直接写 os.getenv，导致同一份配置在 config.py 和 main.py 各解析一遍，
+# 两处规则不一致就会出现"配置里禁用了通配符、中间件却还在用 *"。
+# ---------------------------------------------------------------------------
+def default_chroma_dir() -> str:
+    return os.path.join(BACKEND_DIR, "chroma_db")
+
+
+def default_static_dir() -> str:
+    return os.path.join(PROJECT_DIR, "frontend", "dist")
+
+
+def resolve_chroma_dir() -> str:
+    return os.getenv("CHROMA_DIR") or default_chroma_dir()
+
+
+def resolve_static_dir() -> str:
+    return os.getenv("STATIC_DIR") or default_static_dir()
+
+
+def load_log_level() -> str:
+    return (os.getenv("LOG_LEVEL") or "INFO").strip().upper()
+
+
+def load_cors_origins() -> list[str]:
+    """解析 CORS 白名单。
+
+    生产环境若仍是 "*"，只保留通配并在日志里留痕 —— 显式配置优先，
+    未配置时才退化到通配（本地开发场景），并统一由这里决定，避免多处不一致。
+    """
+    raw = os.getenv("CORS_ORIGINS", "*")
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    return origins or ["*"]
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +137,9 @@ class Settings:
     chunk_overlap: int
     request_timeout: int
     cors_origins: list[str]
+    log_level: str
+    chroma_dir: str
+    static_dir: str
 
     @property
     def provider_label(self) -> str:
@@ -123,8 +174,14 @@ def load_settings() -> Settings:
     if chunk_overlap >= chunk_size:
         raise ConfigError("CHUNK_OVERLAP 必须小于 CHUNK_SIZE")
 
-    origins = [o.strip() for o in _env("CORS_ORIGINS", "*").split(",") if o.strip()]
+    if top_k < 1:
+        raise ConfigError("TOP_K 必须 >= 1")
+    if chunk_size < 1:
+        raise ConfigError("CHUNK_SIZE 必须 >= 1")
+    if timeout < 1:
+        raise ConfigError("REQUEST_TIMEOUT 必须 >= 1")
 
+    # CORS / 路径 / 日志级别统一走上面那组函数，保证与 main.py 读到的完全一致
     return Settings(
         provider=provider,
         api_key=api_key,
@@ -137,5 +194,8 @@ def load_settings() -> Settings:
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         request_timeout=timeout,
-        cors_origins=origins or ["*"],
+        cors_origins=load_cors_origins(),
+        log_level=load_log_level(),
+        chroma_dir=resolve_chroma_dir(),
+        static_dir=resolve_static_dir(),
     )

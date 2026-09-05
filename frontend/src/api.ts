@@ -52,7 +52,8 @@ export async function* streamAgent(
   while (true) {
     const { value, done } = await reader.read()
     if (done) break
-    buffer += decoder.decode(value, { stream: true })
+    // 统一换行符：服务端若以 \r\n\r\n 分帧，只按 \n\n 切会永远切不出完整帧
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
     // SSE 帧以空行分隔
     let idx: number
     while ((idx = buffer.indexOf('\n\n')) !== -1) {

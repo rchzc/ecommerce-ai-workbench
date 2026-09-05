@@ -51,6 +51,15 @@ def chunk_document(
     """把一篇文档切成语义切片。
 
     doc_ordinal 是文档在语料中的全局序号，用于保证 chunk_id 全局唯一。
+
+    重叠只加在"确实被切断"的地方：
+
+    - 段落本身没超阈值 → 整段独立成块，**不**拼接上一段的尾巴。
+      之前无差别给每个块都加前缀，导致知识库里几乎每个切片都被上一段内容污染
+      （中文文档大多整段都短于 600 字），向量被无关文本稀释，召回精度下降。
+    - 长段被切成多块 → 只在**同一段内**的相邻块之间补重叠，
+      保证卡在边界上的那句话至少完整地出现在某一个块里。
+      之前这段逻辑重复加了两次重叠（滚动累积时加一次，最后统一又加一次）。
     """
     if overlap >= chunk_size:
         raise ValueError("overlap 必须小于 chunk_size")
@@ -58,12 +67,18 @@ def chunk_document(
     paragraphs = [p.strip() for p in _PARAGRAPH_SPLIT_RE.split(text) if p.strip()]
 
     segments: list[str] = []
+    # joins[i] 表示第 i 块是否「与第 i-1 块同属一个被切断的长段」，
+    # 只有这种情况才需要补重叠
+    joins: list[bool] = []
+
     for para in paragraphs:
         if len(para) <= chunk_size:
             segments.append(para)
+            joins.append(False)
             continue
         # 长段落：按句滚动累积
         buffer = ""
+        first_in_para = True
         for sentence in split_sentences(para):
             if not buffer:
                 buffer = sentence
@@ -72,19 +87,18 @@ def chunk_document(
                 buffer += sentence
             else:
                 segments.append(buffer)
-                # 滚动时带上上一块尾部的 overlap，保持上下文连续
-                tail = buffer[-overlap:] if overlap else ""
-                buffer = tail + sentence
+                joins.append(not first_in_para)
+                first_in_para = False
+                buffer = sentence
         if buffer:
             segments.append(buffer)
+            joins.append(not first_in_para)
 
-    # 相邻块之间补重叠：把上一块尾部拼到下一块头部
     chunks: list[Chunk] = []
     for idx, segment in enumerate(segments):
         body = segment
-        if idx > 0 and overlap:
-            prev_tail = segments[idx - 1][-overlap:]
-            body = prev_tail + segment
+        if idx > 0 and overlap and joins[idx]:
+            body = segments[idx - 1][-overlap:] + segment
         chunks.append(
             Chunk(
                 text=body,

@@ -17,6 +17,17 @@ services:
       # 知识库向量索引持久化，容器重建不丢
       - kb_data:/app/backend/chroma_db
     restart: unless-stopped
+    # 进程由镜像 ENTRYPOINT 降权到非 root 运行；这里不指定 user，
+    # 否则 ENTRYPOINT 也会以该用户运行，无法 chown 持久卷挂载点。
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      # 复用 /api/ready 探针：进程存活即健康，配置待补时仍返回 200（ready=false）
+      test: ["CMD", "python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/ready').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
 volumes:
   kb_data:

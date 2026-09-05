@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from .base import BaseAgent
@@ -18,18 +19,31 @@ THRESHOLDS = {
 }
 
 
+def _as_number(value: Any) -> float | None:
+    """把输入转成数值，非数值返回 None。
+
+    必须显式排除 bool：它是 int 的子类，`isinstance(True, int)` 为真，
+    直接取值会把 True 当成 1.0，进而误判成"ACOS 100%，严重亏损"。
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    result = float(value)
+    # NaN 参与比较永远为 False，会让异常指标静默通过，这里直接当缺失处理
+    return None if math.isnan(result) else result
+
+
 def precheck(metrics: dict[str, Any]) -> list[str]:
     """规则预检：先把明显的指标异常挑出来。"""
     flags: list[str] = []
-    acos = metrics.get("acos")
-    ctr = metrics.get("ctr")
-    cvr = metrics.get("cvr")
+    acos = _as_number(metrics.get("acos"))
+    ctr = _as_number(metrics.get("ctr"))
+    cvr = _as_number(metrics.get("cvr"))
 
-    if isinstance(acos, (int, float)) and acos > THRESHOLDS["acos_high"]:
+    if acos is not None and acos > THRESHOLDS["acos_high"]:
         flags.append(f"ACOS {acos:.1%} 高于健康阈值 {THRESHOLDS['acos_high']:.0%}，投放亏损风险高")
-    if isinstance(ctr, (int, float)) and ctr < THRESHOLDS["ctr_low"]:
+    if ctr is not None and ctr < THRESHOLDS["ctr_low"]:
         flags.append(f"CTR {ctr:.2%} 低于 {THRESHOLDS['ctr_low']:.2%}，主图或标题吸引力不足")
-    if isinstance(cvr, (int, float)) and cvr < THRESHOLDS["cvr_low"]:
+    if cvr is not None and cvr < THRESHOLDS["cvr_low"]:
         flags.append(f"转化率 {cvr:.1%} 低于 {THRESHOLDS['cvr_low']:.0%}，落地页或价格存在问题")
     return flags
 

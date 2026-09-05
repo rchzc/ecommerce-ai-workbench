@@ -19,7 +19,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api import routes
-from .config import ConfigError, load_settings
+from .config import (
+    ConfigError,
+    load_cors_origins,
+    load_log_level,
+    load_settings,
+    resolve_chroma_dir,
+    resolve_static_dir,
+)
 from .core.embeddings import Embedder
 from .core.llm import LLMGateway
 from .core.vectorstore import VectorStore
@@ -27,20 +34,16 @@ from .errors import AppError
 from .logging import Timer, new_request_id, request_id_var, setup_logging
 from .services.agent_service import AgentService, KnowledgeService
 
-PERSIST_DIR = os.getenv("CHROMA_DIR") or os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "chroma_db"
-)
-STATIC_DIR = os.getenv("STATIC_DIR") or os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "frontend",
-    "dist",
-)
+# 路径与开关统一由 config.py 解析（不再在此处散落 os.getenv），
+# 保证中间件、lifespan、静态托管读到的都是同一份配置。
+PERSIST_DIR = resolve_chroma_dir()
+STATIC_DIR = resolve_static_dir()
 
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """启动初始化 + 关闭清理。"""
-    setup_logging(os.getenv("LOG_LEVEL", "INFO"))
+    setup_logging(load_log_level())
     logger = logging.getLogger("app.lifespan")
 
     try:
@@ -96,9 +99,16 @@ def create_app() -> FastAPI:
     )
 
     # --- 中间件 -------------------------------------------------------
+    cors_origins = load_cors_origins()
+    if "*" in cors_origins:
+        # 不阻断启动（本地开发依赖通配），但留痕提醒：生产应显式列出来源
+        logging.getLogger("app.startup").warning(
+            "cors.wildcard_enabled",
+            extra={"hint": "生产环境请在 CORS_ORIGINS 中指定显式来源，不要用 *"},
+        )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
+        allow_origins=cors_origins,
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization"],
@@ -175,6 +185,30 @@ def create_app() -> FastAPI:
         """配置错误时前端可拉取具体原因，避免只看到 503 一脸茫然。"""
         message = getattr(app.state, "config_error", None)
         return {"configured": message is None, "message": message}
+
+    @app.get("/api/ready", summary="就绪探针")
+    async def ready():
+        """容器就绪探针：不触碰任何业务组件，配置有问题时也返回 200 + ready=false。
+
+        与 /api/health 的区别：health 会真实访问模型配置和向量库（依赖已就绪），
+        适合人工排查；ready 只判断"能不能开始接客"，适合编排系统轮询。
+        """
+        message = getattr(app.state, "config_error", None)
+        components = (
+            "gateway",
+            "store",
+            "embedder",
+            "agent_service",
+            "knowledge_service",
+        )
+        components_ready = all(
+            getattr(app.state, name, None) is not None for name in components
+        )
+        return {
+            "ready": message is None and components_ready,
+            "configured": message is None,
+            "message": message,
+        }
 
     # --- 静态资源（单容器交付）--------------------------------------------
     if os.path.isdir(STATIC_DIR):

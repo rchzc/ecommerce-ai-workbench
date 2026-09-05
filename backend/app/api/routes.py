@@ -15,7 +15,6 @@ from ..agents import list_agents
 from ..core.embeddings import Embedder
 from ..core.llm import LLMGateway
 from ..core.vectorstore import VectorStore
-from ..errors import ValidationError
 from ..schemas import (
     AgentRequest,
     HealthResponse,
@@ -35,6 +34,7 @@ async def health(
     gateway: LLMGateway = Depends(deps.get_gateway),
     store: VectorStore = Depends(deps.get_store),
     embedder: Embedder = Depends(deps.get_embedder),
+    service: AgentService = Depends(deps.get_agent_service),
 ) -> HealthResponse:
     """健康检查端点。用于 Docker healthcheck 和前端启动自检。"""
     return HealthResponse(
@@ -45,13 +45,22 @@ async def health(
         model_heavy=gateway.settings.model_heavy,
         embedding_mode=embedder.mode,
         knowledge_chunks=store.count(),
-        agents=[a["name"] for a in list_agents()],
+        # 走服务层而不是直接 import agents 模块：控制器只认服务层，
+        # 否则"控制器 → 服务 → 领域"的单向依赖就悄悄多出一条捷径，
+        # 以后给列表加权限过滤时很容易漏掉这里。
+        agents=[a["name"] for a in service.available_agents()],
     )
 
 
 @router.get("/agents", summary="列出所有可用 Agent")
 async def agents() -> dict:
-    """前端据此动态渲染面板，新增 Agent 不需要改前端。"""
+    """前端据此动态渲染面板，新增 Agent 不需要改前端。
+
+    这里刻意直连注册表、不注入 AgentService：Agent 清单是纯静态元数据，
+    不依赖任何运行期组件，因此**服务未就绪时也必须可用** ——
+    前端要先拿到清单才能渲染出面板，进而把配置错误提示显示在正确位置。
+    若走依赖注入，配置一错这个接口也 503，前端就只剩一片空白。
+    """
     return {"items": list_agents()}
 
 

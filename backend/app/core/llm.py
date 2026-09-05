@@ -31,6 +31,39 @@ logger = logging.getLogger(__name__)
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 
+# 厂商不支持 response_format / json_object 时的错误特征
+_UNSUPPORTED_MARKERS = (
+    "response_format",
+    "json_object",
+    "json mode",
+    "json_mode",
+    "unsupported",
+    "not supported",
+    "unknown parameter",
+    "invalid_request",
+    "unrecognized request argument",
+)
+
+
+def is_unsupported_json_mode(exc: Exception) -> bool:
+    """判断异常是否来自「厂商不支持强制 JSON 模式」这类请求参数问题。
+
+    只有这类错误才值得去掉 response_format 重试一次。
+
+    之前这里捕获所有异常都重试：401 鉴权失败、429 限流、网络超时
+    也会被当成"不支持 JSON 模式"，结果是多花一次注定失败的调用，
+    还把真正的错误伪装成降级，排查时被误导到完全错误的方向。
+    """
+    status = getattr(exc, "status_code", None)
+    if status is not None:
+        try:
+            if int(status) not in (400, 404, 415, 422):
+                return False
+        except (TypeError, ValueError):
+            return False
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return any(marker in text for marker in _UNSUPPORTED_MARKERS)
+
 
 # ---------------------------------------------------------------------------
 # 模型路由
@@ -183,18 +216,31 @@ class LLMGateway:
             max_retries=1,
         )
 
-    def resolve_model(self, task_text: str, force: str | None = None) -> str:
-        """选择模型：force 优先，否则按复杂度路由。"""
+    def resolve_route(
+        self, task_text: str, force: str | None = None
+    ) -> tuple[str, str, int]:
+        """一次算完路由结果，返回 (model, tier, score)。
+
+        流式链路要把 tier/score 下发给前端做成本看板。若先 classify_complexity
+        再 resolve_model，同一套关键词扫描会算两遍，且两处逻辑一旦漂移，
+        就会出现"看板显示走轻量、实际调用重量"这种自相矛盾的展示。
+        """
         if force in ("light", "heavy"):
-            return (
+            model = (
                 self.settings.model_light
                 if force == "light"
                 else self.settings.model_heavy
             )
-        tier, _ = classify_complexity(task_text)
-        return (
+            return model, force, 0
+        tier, score = classify_complexity(task_text)
+        model = (
             self.settings.model_light if tier == "light" else self.settings.model_heavy
         )
+        return model, tier, score
+
+    def resolve_model(self, task_text: str, force: str | None = None) -> str:
+        """选择模型：force 优先，否则按复杂度路由。"""
+        return self.resolve_route(task_text, force)[0]
 
     async def complete(
         self,
@@ -224,7 +270,22 @@ class LLMGateway:
         try:
             resp = await self._client.chat.completions.create(**kwargs)
         except Exception as exc:  # 统一包装，不让 SDK 异常穿透到控制器
-            raise ModelCallError(f"模型调用失败（{self.settings.provider_label}）: {exc}") from exc
+            if not (json_mode and is_unsupported_json_mode(exc)):
+                raise ModelCallError(
+                    f"模型调用失败（{self.settings.provider_label}）: {exc}"
+                ) from exc
+            # 厂商不支持强制 JSON 模式：去掉参数重试一次，输出交给三级容错解析兜底
+            logger.warning(
+                "llm.complete.json_mode_unsupported",
+                extra={"model": model, "error": str(exc)[:200]},
+            )
+            kwargs.pop("response_format")
+            try:
+                resp = await self._client.chat.completions.create(**kwargs)
+            except Exception as exc2:
+                raise ModelCallError(
+                    f"模型调用失败（{self.settings.provider_label}）: {exc2}"
+                ) from exc2
 
         content = resp.choices[0].message.content or ""
         usage = getattr(resp, "usage", None)
@@ -265,8 +326,13 @@ class LLMGateway:
         try:
             stream = await self._client.chat.completions.create(**kwargs)
         except Exception as exc:
-            # 部分厂商（如 DeepSeek）不支持 response_format，降级为不带该参数重试。
-            # 此时输出可能是单引号字典，靠前端容错解析兜底。
+            if not is_unsupported_json_mode(exc):
+                # 鉴权失败 / 限流 / 超时都不是"不支持 JSON 模式"，重试无意义
+                raise ModelCallError(
+                    f"模型流式调用失败（{self.settings.provider_label}）: {exc}"
+                ) from exc
+            # 部分厂商（如 DeepSeek）不支持 response_format，降级为不带该参数重试一次。
+            # 此时输出可能是单引号字典，靠三级容错解析兜底。
             logger.warning(
                 "llm.stream.json_mode_unsupported",
                 extra={"model": model, "error": str(exc)[:200]},

@@ -15,15 +15,15 @@
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from ..core.embeddings import Embedder
-from ..core.llm import LLMGateway, classify_complexity, parse_json_lenient
+from ..core.llm import LLMGateway, parse_json_lenient
+from ..core.rerank import rerank
 from ..core.vectorstore import RetrievedChunk, VectorStore
 from ..errors import KnowledgeBaseError, ModelCallError
 
@@ -171,10 +171,10 @@ class BaseAgent(ABC):
             f"JSON 结构如下：\n{schema}"
         )
 
-        # 路由决策在调用前算出并下发给前端，让"选了哪个模型"变成可见的
+        # 路由决策在调用前算出并下发给前端，让"选了哪个模型"变成可见的。
+        # 同时把 tier 回传给 gateway，避免它内部再算一遍复杂度 —— 一次决策，两处复用。
         task_text = f"{system}\n{user}"
-        tier, score = classify_complexity(task_text)
-        model = gateway.resolve_model(task_text)
+        model, tier, score = gateway.resolve_route(task_text)
         yield {
             "type": "meta",
             "model": model,
@@ -184,10 +184,12 @@ class BaseAgent(ABC):
             "retrieve_ms": round((time.perf_counter() - started) * 1000, 2),
         }
 
-        yield {"type": "knowledge", "items": [c.__dict__ for c in knowledge_chunks]}
+        yield {"type": "knowledge", "items": [asdict(c) for c in knowledge_chunks]}
 
         started_gen = time.perf_counter()
-        async for delta in gateway.stream(system, user, temperature=self.temperature()):
+        async for delta in gateway.stream(
+            system, user, temperature=self.temperature(), force_tier=tier
+        ):
             yield {"type": "delta", "text": delta}
 
         yield {
@@ -211,14 +213,35 @@ class BaseAgent(ABC):
             # 向量化失败（如 Key 未配 / 网络问题）也降级为不检索，
             # 而不是让整个请求失败。Agent 仍能基于通用经验作答。
             logger.warning("agent.embed_failed", extra={"agent": self.name, "error": str(exc)})
-            return []
+            vectors = []
+        except Exception as exc:
+            # 检索是增强手段，不是主链路：任何未预期异常都只降级，绝不能拖垮整个请求
+            logger.warning(
+                "agent.embed_unexpected",
+                extra={"agent": self.name, "error": str(exc)[:200]},
+            )
+            vectors = []
         embedding = vectors[0] if vectors else None
         try:
-            return store.query(embedding, domain=self.domain, top_k=top_k)
-        except KnowledgeBaseError:
+            # 召回 2 倍候选，交给 rerank 做词面二次重排后再取 top_k，
+            # 缓解纯向量召回"字面命中却被排后"的噪声（见 core/rerank.py）。
+            # query_text 用于无向量的本地降级场景，保证文本检索用的是真实问题。
+            candidates = store.query(
+                embedding,
+                domain=self.domain,
+                top_k=max(top_k * 2, top_k),
+                query_text=query,
+            )
+        except KnowledgeBaseError as exc:
             # 知识库不可用时降级为不检索，而不是让整个请求失败
-            logger.warning("agent.retrieve_failed", extra={"agent": self.name})
+            logger.warning(
+                "agent.retrieve_failed",
+                extra={"agent": self.name, "error": str(exc)[:200]},
+            )
             return []
+        if not candidates:
+            return []
+        return rerank(query, candidates, top_k=top_k)
 
     def _build_query(self, payload: dict[str, Any]) -> str:
         """从输入里拼出检索语句。子类可覆写以挑更关键的字段。"""
