@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .api import batch as batch_routes
 from .api import routes
 from .config import (
     ConfigError,
@@ -33,6 +34,7 @@ from .core.vectorstore import VectorStore
 from .errors import AppError
 from .logging import Timer, new_request_id, request_id_var, setup_logging
 from .services.agent_service import AgentService, KnowledgeService
+from .services.batch_service import BatchService
 
 # 路径与开关统一由 config.py 解析（不再在此处散落 os.getenv），
 # 保证中间件、lifespan、静态托管读到的都是同一份配置。
@@ -70,6 +72,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.knowledge_service = KnowledgeService(
         store=store, embedder=embedder, settings=settings
+    )
+    # 批量任务服务：持有后台任务，跨越请求生命周期，因此挂在 app.state 上而不是每次新建
+    app.state.batch_service = BatchService(
+        agent_service=app.state.agent_service,
+        max_rows=settings.batch_max_rows,
+        concurrency=settings.batch_concurrency,
     )
 
     logger.info(
@@ -179,6 +187,7 @@ def create_app() -> FastAPI:
 
     # --- 路由 -----------------------------------------------------------
     app.include_router(routes.router, prefix="/api")
+    app.include_router(batch_routes.router, prefix="/api")
 
     @app.get("/api/config/error")
     async def config_error():

@@ -21,6 +21,11 @@
 
 每个智能体走同一条链路：**检索领域知识 → 组装 Prompt → 调用模型 → 结构化解析 → 异常兜底**。
 
+除了单条分析，工作台还支持**批量任务**：上传 / 粘贴一张表格，逐行跑同一个智能体，
+每行输出都过一遍**规则校验**（字段缺失、类型不符、占位内容、结构崩塌），
+最终把「原始输入 + AI 输出 + 校验结论」回写成一张新表格下载。
+也就是把业务 SOP 固化下来：**标准输入 → AI 处理 → 规则校验 → 人工审核 → 标准输出**。
+
 ## 技术要点（面试可讲）
 
 - **分层架构**：`api`（控制器）/ `services`（业务编排）/ `agents`（领域逻辑）/ `core`（基础设施），
@@ -32,6 +37,11 @@
 - **检索重排（reranker）**：向量召回 top_k×2 候选后，用「语义分 + 词面重叠分」融合重排再取 top_k，
   缓解纯向量召回"字面命中却被排后"的噪声。纯本地、不联网、可复现（见 `core/rerank.py`）。
 - **流式输出**：SSE 实现打字机效果，长任务不用干等。
+- **批量任务与规则校验**：表格进、表格出。异步 job + 幂等键 + 单行失败隔离，
+  每行输出按 `output_schema` 做规则校验（缺失 / 类型 / 占位 / 结构崩塌），
+  给出「通过 / 需留意 / 待人工」三档结论，脏输出不会安静地混进结果表。
+- **对外 Webhook**：`X-API-Key` 鉴权的调用端点，可被 n8n / Dify / Coze 直接编排，
+  返回值带 `validation` 字段，自动化流程能据此判断"直接用还是转人工"。
 - **工程化**：集中校验配置（缺密钥启动即失败）、类型化错误 → 规范 JSON、请求 ID + 结构化日志、健康检查、单容器交付。
 
 ## 快速开始
@@ -116,8 +126,67 @@ LLM_API_KEY=sk-xxx docker compose up -d
 | GET | `/api/kb/stats` | 知识库统计 |
 | POST | `/api/kb/rebuild` | 重建向量索引 |
 | GET | `/api/usage` | 模型用量统计 |
+| POST | `/api/batch/run` | 创建批量任务（JSON 行数组），立即返回 `job_id` |
+| POST | `/api/batch/upload` | 上传 CSV 创建批量任务（multipart，支持 UTF-8 / GBK） |
+| GET | `/api/batch/{job_id}` | 查询任务进度与结果（`?include_rows=false` 只取进度） |
+| GET | `/api/batch/{job_id}/export` | 导出结果（`?format=csv\|json`，CSV 带 BOM，Excel 直接可开） |
+| POST | `/api/hooks/agent/{name}` | 对外 Webhook 单点调用（需 `X-API-Key`，返回带 `validation`） |
 
 交互式文档：`/api/docs`（Swagger）。
+
+## 批量任务与自动化集成
+
+运营手里的活天然是表格：一批 SKU 要写 Listing、一批竞品要做分析、一批评论要打标签。
+逐个粘贴进对话框，本质上还是"人在用 AI"；批量化 + 规则校验 + 结果回写表格，
+才把 AI 能力变成团队可重复调用的 SOP。
+
+### 三种用法
+
+**1）前端页签**：顶部切到「批量任务」→ 选智能体 → 粘贴表格或上传 CSV → 提交 → 轮询进度 → 下载结果。
+
+**2）命令行 / 脚本**：
+
+```bash
+# 提交 2 行批量任务
+curl -X POST http://localhost:8000/api/batch/run \
+  -H "Content-Type: application/json" \
+  -d '{"agent":"listing","rows":[{"product":"折叠伞","platform":"amazon","lang":"zh"}]}'
+# → {"job_id":"a1b2c3d4e5f6","agent":"listing","status":"pending","total":1}
+
+# 轮询进度
+curl http://localhost:8000/api/batch/a1b2c3d4e5f6
+
+# 导出结果（Excel 可直接打开）
+curl -OJ "http://localhost:8000/api/batch/a1b2c3d4e5f6/export?format=csv"
+```
+
+**3）n8n / Dify / Coze 编排**：用 HTTP Request 节点调 Webhook 端点。
+
+```bash
+curl -X POST http://localhost:8000/api/hooks/agent/listing \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: 你的 WORKFLOW_API_KEY" \
+  -d '{"payload":{"product":"折叠伞","platform":"amazon","lang":"zh"}}'
+```
+
+返回值比内部接口多一个 `validation` 字段（`pass` / `warn` / `fail`），
+流程可以直接判断"这条结果能不能自动放行，还是要转人工"——
+**自动化流程需要的是可判定的信号，而不只是一段文本**。
+
+### 相关配置（`backend/.env`）
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `WORKFLOW_API_KEY` | 空 | Webhook 调用凭据。**不配则 Webhook 端点直接 503**，不做静默放行 |
+| `BATCH_MAX_ROWS` | 200 | 单个批量任务的行数上限，防止一次提交几千行打满额度 |
+| `BATCH_CONCURRENCY` | 3 | 并发度，太高会触发厂商限流 |
+
+### 设计要点
+
+- **异步 job + 轮询**：200 行要跑几分钟，绝不在 HTTP 请求里干等。
+- **幂等键**：同一 `idempotency_key` 只跑一次，n8n 重试 / 重复点击不会触发第二次模型调用。
+- **单行失败不影响整批**：失败行标记 `code: message` 留在结果里，整批状态为 `partial` 而非全军覆没。
+- **任务落盘**：结果存在 `backend/data/jobs/`，重启后仍可查询与导出。
 
 ## 目录结构
 
@@ -128,7 +197,7 @@ LLM_API_KEY=sk-xxx docker compose up -d
 │   │   ├── api/        控制器（只做请求解析与响应格式化）
 │   │   ├── services/   业务编排（Agent 编排 / 知识库管理）
 │   │   ├── agents/     6 个智能体，各自实现 build_prompt + output_schema
-│   │   ├── core/       LLM 网关 / 向量化 / 切分 / 向量库
+│   │   ├── core/       LLM 网关 / 向量化 / 切分 / 向量库 / 规则校验 / CSV 读写 / 鉴权
 │   │   ├── config.py   配置（多厂商 preset + 启动校验）
 │   │   ├── errors.py   类型化错误
 │   │   ├── logging.py  结构化日志 + 请求 ID

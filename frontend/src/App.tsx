@@ -10,6 +10,7 @@ import {
   getAgentMeta,
 } from './forms'
 import { AgentResultView } from './components/Results'
+import { BatchPanel } from './components/BatchPanel'
 import { Icon } from './components/Icons'
 import './styles.css'
 
@@ -33,6 +34,7 @@ function localAgentList(): AgentMeta[] {
 }
 
 export default function App() {
+  const [tab, setTab] = useState<'single' | 'batch'>('single')
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [agents, setAgents] = useState<AgentMeta[]>([])
   const [active, setActive] = useState('selection')
@@ -158,6 +160,24 @@ export default function App() {
     <div className="app">
       <Header health={health} />
 
+      <div className="tabbar">
+        <button className={`tab ${tab === 'single' ? 'on' : ''}`} onClick={() => setTab('single')}>
+          <Icon name="spark" size={15} />
+          单条分析
+        </button>
+        <button className={`tab ${tab === 'batch' ? 'on' : ''}`} onClick={() => setTab('batch')}>
+          <Icon name="layers" size={15} />
+          批量任务
+        </button>
+      </div>
+
+      {tab === 'batch' ? (
+        <div className="layout">
+          <main className="col-main batch-col">
+            <BatchPanel agents={agentList} />
+          </main>
+        </div>
+      ) : (
       <div className="layout">
         {/* 左：智能体卡片 */}
         <aside className="col-left">
@@ -321,6 +341,7 @@ export default function App() {
           </div>
         </aside>
       </div>
+      )}
     </div>
   )
 }

@@ -53,6 +53,15 @@ class AgentService:
     def available_agents(self) -> list[dict[str, str]]:
         return list_agents()
 
+    def output_schema(self, agent_name: str) -> dict[str, Any]:
+        """取该 Agent 的输出结构定义，供批量任务做规则校验。
+
+        单独开一个方法而不是让调用方直接 `from ..agents import create_agent`：
+        批量任务层只依赖服务层，不该知道 Agent 是怎么注册和创建的 ——
+        否则"新增 Agent 只需改注册表"这个约定就被绕过去了。
+        """
+        return self._get_agent(agent_name).output_schema()
+
     def _get_agent(self, agent_name: str) -> BaseAgent:
         """按名字取 Agent，未知名字转 404。
 

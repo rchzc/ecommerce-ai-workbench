@@ -78,3 +78,17 @@ class NotFoundError(AppError):
 
     status_code = 404
     code = "not_found"
+
+
+class UnauthorizedError(AppError):
+    """凭据缺失或无效 —— 客户端问题，重试无用，需换凭据。"""
+
+    status_code = 401
+    code = "unauthorized"
+
+
+class RateLimitError(AppError):
+    """触发限流 —— 客户端需退避后重试。"""
+
+    status_code = 429
+    code = "rate_limited"

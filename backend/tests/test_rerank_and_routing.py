@@ -120,6 +120,9 @@ def _settings() -> Settings:
         log_level="INFO",
         chroma_dir="/tmp/chroma",
         static_dir="/tmp/static",
+        workflow_api_key="",
+        batch_max_rows=200,
+        batch_concurrency=3,
     )
 
 

@@ -140,6 +140,13 @@ class Settings:
     log_level: str
     chroma_dir: str
     static_dir: str
+    # --- 批量任务与对外 Webhook ---
+    # 对外 Webhook 的调用凭据：不配则 Webhook 端点直接 503，不做静默放行
+    workflow_api_key: str
+    # 单个批量任务的行数上限：防止一次提交几千行把模型额度打满
+    batch_max_rows: int
+    # 批量任务的并发度：并发太高会触发厂商限流，太低则批量没有意义
+    batch_concurrency: int
 
     @property
     def provider_label(self) -> str:
@@ -181,6 +188,17 @@ def load_settings() -> Settings:
     if timeout < 1:
         raise ConfigError("REQUEST_TIMEOUT 必须 >= 1")
 
+    try:
+        batch_max_rows = int(_env("BATCH_MAX_ROWS", "200"))
+        batch_concurrency = int(_env("BATCH_CONCURRENCY", "3"))
+    except ValueError as exc:
+        raise ConfigError(f"批量任务配置项解析失败：{exc}") from exc
+
+    if batch_max_rows < 1:
+        raise ConfigError("BATCH_MAX_ROWS 必须 >= 1")
+    if batch_concurrency < 1:
+        raise ConfigError("BATCH_CONCURRENCY 必须 >= 1")
+
     # CORS / 路径 / 日志级别统一走上面那组函数，保证与 main.py 读到的完全一致
     return Settings(
         provider=provider,
@@ -198,4 +216,7 @@ def load_settings() -> Settings:
         log_level=load_log_level(),
         chroma_dir=resolve_chroma_dir(),
         static_dir=resolve_static_dir(),
+        workflow_api_key=_env("WORKFLOW_API_KEY"),
+        batch_max_rows=batch_max_rows,
+        batch_concurrency=batch_concurrency,
     )

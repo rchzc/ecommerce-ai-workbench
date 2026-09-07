@@ -1,8 +1,24 @@
 import type { FormField } from './types'
 
+// 与后端 ListingAgent / SupportAgent 的 LANG_NAMES 对齐：6 语种（zh/en/de/fr/es/ja）。
+// 上一轮业务评估发现前端只暴露 zh/en，与后端 6 语种不一致是一个显眼的体验裂缝。
 const LANG_OPTIONS = [
   { value: 'zh', label: '中文' },
   { value: 'en', label: 'English' },
+  { value: 'de', label: 'Deutsch' },
+  { value: 'fr', label: 'Français' },
+  { value: 'es', label: 'Español' },
+  { value: 'ja', label: '日本語' },
+]
+
+// 与后端 ListingAgent 的平台字数硬约束对齐（amazon 200 / tiktok_shop 80 / shopee 100 / aliexpress 50 / standalone 70）。
+// 平台选项需要在表单里显式给出，避免用户在备注里写"做亚马逊"却被模型按通用 200 字符处理。
+const PLATFORM_OPTIONS = [
+  { value: 'amazon', label: '亚马逊（标题 ≤200 字符）' },
+  { value: 'tiktok_shop', label: 'TikTok Shop（≤80 字符）' },
+  { value: 'shopee', label: 'Shopee 东南亚（≤100 字符）' },
+  { value: 'aliexpress', label: '速卖通（≤50 字符）' },
+  { value: 'standalone', label: '独立站 / Shopify（≤70 字符，SEO 友好）' },
 ]
 
 // 每个 Agent 对应的表单字段。新增 Agent 时在这里加一组即可，UI 完全动态渲染。
@@ -16,6 +32,7 @@ export const AGENT_FORMS: Record<string, FormField[]> = {
   listing: [
     { key: 'product', label: '产品', type: 'text', placeholder: '如：不锈钢保温杯 500ml', example: '不锈钢保温杯 500ml' },
     { key: 'features', label: '核心卖点', type: 'textarea', placeholder: '每行一个卖点：12h 保温 / 一键开盖 / 防漏…' },
+    { key: 'platform', label: '目标平台', type: 'select', options: PLATFORM_OPTIONS },
     { key: 'lang', label: '生成语言', type: 'select', options: LANG_OPTIONS },
   ],
   review: [
@@ -95,6 +112,7 @@ export const AGENT_EXAMPLES: Record<string, Record<string, string>> = {
   listing: {
     product: '不锈钢保温杯 500ml',
     features: '12 小时长效保温\n一键弹盖，单手可开\n食品级 304 内胆\n双重防漏密封圈\n磨砂防滑杯身',
+    platform: 'amazon',
     lang: 'en',
   },
   review: {

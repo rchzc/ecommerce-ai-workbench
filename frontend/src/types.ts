@@ -46,6 +46,53 @@ export interface AgentResult {
   }
 }
 
+// ---------------------------------------------------------------- 批量任务
+export type JobStatus = 'pending' | 'running' | 'done' | 'partial' | 'failed'
+export type RowStatus = 'ok' | 'failed' | 'pending'
+export type ValidationStatus = 'pass' | 'warn' | 'fail'
+
+export interface ValidationIssue {
+  field: string
+  rule: string
+  level: 'warn' | 'fail'
+  message: string
+}
+
+export interface BatchRowResult {
+  index: number
+  status: RowStatus
+  input: Record<string, unknown>
+  data: Record<string, unknown> | null
+  validation: { status: ValidationStatus; issues: ValidationIssue[] } | null
+  sources: string[]
+  error: string | null
+  elapsed_ms: number
+}
+
+export interface BatchJob {
+  job_id: string
+  agent: string
+  status: JobStatus
+  total: number
+  finished: number
+  ok: number
+  failed: number
+  warned: number
+  need_review: number
+  progress: number
+  error: string | null
+  created_at: number
+  updated_at: number
+  rows?: BatchRowResult[]
+}
+
+export interface BatchJobInit {
+  job_id: string
+  agent: string
+  status: JobStatus
+  total: number
+}
+
 export interface FormField {
   key: string
   label: string

@@ -20,6 +20,11 @@ const PATHS: Record<string, string> = {
   book: 'M4 5a2 2 0 0 1 2 -2h12v18H6a2 2 0 0 1 -2 -2zM8 7h7M8 11h7',
   refresh: 'M20 11A8 8 0 0 0 6.3 6.3L4 8.5M4 5v3.5h3.5M4 13a8 8 0 0 0 13.7 4.7L20 15.5M20 19v-3.5h-3.5',
   arrow: 'M5 12h14M13 6l6 6l-6 6',
+  // 批量任务相关
+  layers: 'M12 3l9 5l-9 5l-9 -5zM3 13l9 5l9 -5M3 17l9 5l9 -5',
+  upload: 'M12 16V4M7 9l5 -5l5 5M4 20h16',
+  download: 'M12 4v12M7 11l5 5l5 -5M4 20h16',
+  table: 'M3 5h18v14H3zM3 10h18M9 10v9M15 10v9',
 }
 
 export function Icon({ name, size = 18, className }: IconProps) {

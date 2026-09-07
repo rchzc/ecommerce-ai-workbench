@@ -16,11 +16,13 @@ from typing import Any
 
 from fastapi import Request
 
+from ..config import Settings
 from ..core.embeddings import Embedder
 from ..core.llm import LLMGateway
 from ..core.vectorstore import VectorStore
 from ..errors import ConfigError
 from ..services.agent_service import AgentService, KnowledgeService
+from ..services.batch_service import BatchService
 
 _NOT_READY = "服务尚未就绪：组件未完成初始化，请检查启动日志"
 
@@ -57,3 +59,12 @@ def get_agent_service(request: Request) -> AgentService:
 
 def get_knowledge_service(request: Request) -> KnowledgeService:
     return _require(request, "knowledge_service")
+
+
+def get_batch_service(request: Request) -> BatchService:
+    return _require(request, "batch_service")
+
+
+def get_settings(request: Request) -> Settings:
+    """取运行期配置快照（Webhook 鉴权需要读 WORKFLOW_API_KEY）。"""
+    return _require(request, "settings")

@@ -1,4 +1,11 @@
-import type { AgentMeta, AgentResult, HealthResponse, SSEEvent } from './types'
+import type {
+  AgentMeta,
+  AgentResult,
+  BatchJob,
+  BatchJobInit,
+  HealthResponse,
+  SSEEvent,
+} from './types'
 
 const BASE = '/api'
 
@@ -27,6 +34,53 @@ export async function runAgent(agent: string, payload: Record<string, unknown>):
     throw new Error(err?.error?.message || `执行失败：${r.status}`)
   }
   return r.json()
+}
+
+// ---------------------------------------------------------------- 批量任务
+
+/** 从后端错误响应里取出可读文案（后端统一返回 {error:{code,message}}） */
+async function readError(r: Response, fallback: string): Promise<string> {
+  const err = await r.json().catch(() => ({}))
+  return err?.error?.message || `${fallback}：${r.status}`
+}
+
+export async function createBatch(
+  agent: string,
+  rows: Record<string, string>[],
+  idempotencyKey?: string,
+): Promise<BatchJobInit> {
+  const r = await fetch(`${BASE}/batch/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agent, rows, idempotency_key: idempotencyKey || null }),
+  })
+  if (!r.ok) throw new Error(await readError(r, '创建批量任务失败'))
+  return r.json()
+}
+
+export async function uploadBatchCsv(
+  agent: string,
+  file: File,
+  idempotencyKey?: string,
+): Promise<BatchJobInit> {
+  const form = new FormData()
+  form.append('agent', agent)
+  form.append('file', file)
+  if (idempotencyKey) form.append('idempotency_key', idempotencyKey)
+  const r = await fetch(`${BASE}/batch/upload`, { method: 'POST', body: form })
+  if (!r.ok) throw new Error(await readError(r, '上传 CSV 失败'))
+  return r.json()
+}
+
+export async function fetchBatch(jobId: string, includeRows = true): Promise<BatchJob> {
+  const r = await fetch(`${BASE}/batch/${jobId}?include_rows=${includeRows}`)
+  if (!r.ok) throw new Error(await readError(r, '查询任务失败'))
+  return r.json()
+}
+
+/** 导出结果的下载地址（带 BOM，Excel 双击可开） */
+export function batchExportUrl(jobId: string, format: 'csv' | 'json' = 'csv'): string {
+  return `${BASE}/batch/${jobId}/export?format=${format}`
 }
 
 /** 流式执行：用原生 EventSource 无法带 body，这里用 fetch + ReadableStream 解析 SSE */

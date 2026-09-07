@@ -3,9 +3,11 @@
 用法：
   # 演示（无需凭证）：生成 mock 数据写入知识库目录，并重建索引
   python scripts/sync_data.py --provider shopify --mock
+  python scripts/sync_data.py --provider amazon  --mock
 
-  # 真实接入：需要 backend/.env 里的 SHOPIFY_SHOP / SHOPIFY_TOKEN
+  # 真实接入：需要 backend/.env 里的相应凭证
   python scripts/sync_data.py --provider shopify
+  python scripts/sync_data.py --provider amazon
 
   # 仅写文件、不重建索引（调试连接器用）
   python scripts/sync_data.py --provider shopify --mock --no-rebuild
@@ -24,7 +26,14 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.config import load_settings  # noqa: E402
-from app.connectors import ShopifyConnector, mock_orders, mock_reviews  # noqa: E402
+from app.connectors import (  # noqa: E402
+    ShopifyConnector,
+    mock_orders,
+    mock_reviews,
+    AmazonSpApiConnector,
+    mock_orders_amazon,
+    mock_reviews_amazon,
+)
 from app.core.embeddings import Embedder  # noqa: E402
 from app.core.vectorstore import VectorStore  # noqa: E402
 from app.services.agent_service import KnowledgeService  # noqa: E402
@@ -36,7 +45,12 @@ CHROMA_DIR = os.getenv("CHROMA_DIR") or os.path.join(BACKEND_DIR, "chroma_db")
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="把真实店铺数据同步进知识库")
-    p.add_argument("--provider", default="shopify", choices=["shopify"])
+    p.add_argument(
+        "--provider",
+        default="shopify",
+        choices=["shopify", "amazon"],
+        help="数据源：shopify（独立站）或 amazon（亚马逊 SP-API）",
+    )
     p.add_argument("--mock", action="store_true", help="使用内置 mock 数据，无需凭证")
     p.add_argument("--no-rebuild", action="store_true", help="只写文件，不重建向量索引")
     return p.parse_args()
@@ -46,19 +60,64 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = parse_args()
 
-    if args.mock:
-        connector = ShopifyConnector("mock", "mock")
-        result = connector.write_docs(mock_orders(), mock_reviews())
-        print(f"[mock] 已写入：{result['written']}（订单 {result['orders']} / 评论 {result['reviews']}）")
-    else:
-        shop = os.getenv("SHOPIFY_SHOP")
-        token = os.getenv("SHOPIFY_TOKEN")
-        if not (shop and token):
-            print("缺少 SHOPIFY_SHOP / SHOPIFY_TOKEN，请用 --mock 演示，或在 backend/.env 填写后重试")
-            sys.exit(2)
-        connector = ShopifyConnector(shop, token)
-        result = connector.sync()
-        print(f"[shopify] 已同步订单 {result['orders']} 条、评论 {result['reviews']} 条 -> {result['written']}")
+    if args.provider == "shopify":
+        if args.mock:
+            connector = ShopifyConnector("mock", "mock")
+            result = connector.write_docs(mock_orders(), mock_reviews())
+            print(f"[mock shopify] 已写入：{result['written']}（订单 {result['orders']} / 评论 {result['reviews']}）")
+        else:
+            shop = os.getenv("SHOPIFY_SHOP")
+            token = os.getenv("SHOPIFY_TOKEN")
+            if not (shop and token):
+                print("缺少 SHOPIFY_SHOP / SHOPIFY_TOKEN，请用 --mock 演示，或在 backend/.env 填写后重试")
+                sys.exit(2)
+            connector = ShopifyConnector(shop, token)
+            result = connector.sync()
+            print(f"[shopify] 已同步订单 {result['orders']} 条、评论 {result['reviews']} 条 -> {result['written']}")
+
+    elif args.provider == "amazon":
+        if args.mock:
+            # mock 模式：所有凭证都填"mock"也能跑通，因为不走真实 _get
+            connector = AmazonSpApiConnector(
+                seller_id="mock",
+                marketplace_id="ATVPDKIKX0DER",
+                client_id="mock",
+                client_secret="mock",
+                refresh_token="mock",
+                region="sandbox",
+            )
+            result = connector.write_docs(mock_orders_amazon(), mock_reviews_amazon())
+            print(f"[mock amazon] 已写入：{result['written']}（订单 {result['orders']} / 评论 {result['reviews']}）")
+        else:
+            marketplace_id = os.getenv("AMAZON_MARKETPLACE_ID")
+            seller_id = os.getenv("AMAZON_SELLER_ID")
+            client_id = os.getenv("AMAZON_CLIENT_ID")
+            client_secret = os.getenv("AMAZON_CLIENT_SECRET")
+            refresh_token = os.getenv("AMAZON_REFRESH_TOKEN")
+            region = os.getenv("AMAZON_REGION", "na")
+            missing = [
+                k for k, v in {
+                    "AMAZON_MARKETPLACE_ID": marketplace_id,
+                    "AMAZON_SELLER_ID": seller_id,
+                    "AMAZON_CLIENT_ID": client_id,
+                    "AMAZON_CLIENT_SECRET": client_secret,
+                    "AMAZON_REFRESH_TOKEN": refresh_token,
+                }.items() if not v
+            ]
+            if missing:
+                print(f"缺少亚马逊凭证：{', '.join(missing)}")
+                print("请用 --mock 演示，或在 backend/.env 填写后重试")
+                sys.exit(2)
+            connector = AmazonSpApiConnector(
+                seller_id=seller_id,
+                marketplace_id=marketplace_id,
+                client_id=client_id,
+                client_secret=client_secret,
+                refresh_token=refresh_token,
+                region=region,
+            )
+            result = connector.sync()
+            print(f"[amazon] 已同步订单 {result['orders']} 条、评论 {result['reviews']} 条 -> {result['written']}")
 
     if args.no_rebuild:
         print("跳过重建索引（--no-rebuild）。需要生效时运行：curl -X POST http://127.0.0.1:8000/api/kb/rebuild")
