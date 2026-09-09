@@ -102,3 +102,86 @@ export interface FormField {
   example?: string
   hint?: string
 }
+
+// ---------------------------------------------------------------- 销售日报 / 数据看板
+export interface ReportMetrics {
+  revenue: number
+  orders: number
+  units: number
+  ad_spend: number
+  shops: number
+  skus: number
+}
+
+export interface ShopRow {
+  shop: string
+  revenue: number
+  orders: number
+  units: number
+  ad_spend: number
+}
+
+export interface SkuRow {
+  shop: string
+  sku: string
+  revenue: number
+  units: number
+  stock: number
+  safe_stock: number
+}
+
+export interface TrendPoint {
+  date: string
+  revenue: number
+  orders: number
+}
+
+export interface ReportAlert {
+  level: 'high' | 'mid'
+  type: string
+  message: string
+}
+
+export interface DailyReport {
+  date: string
+  metrics: ReportMetrics
+  by_shop: ShopRow[]
+  top_skus: SkuRow[]
+  trend: TrendPoint[]
+  alerts: ReportAlert[]
+  markdown: string
+  saved_to: string | null
+}
+
+// ---------------------------------------------------------------- 全链路流水线
+export interface PipelineStep {
+  status: 'ok' | 'failed' | 'skipped'
+  date?: string
+  appended?: number
+  mode?: string
+  alerts?: number
+  rows_created?: number
+  reason?: string
+  error?: string
+  summary?: string
+  model?: string
+}
+
+export interface PipelineRunResult {
+  date: string
+  status: 'ok' | 'failed'
+  steps: Record<string, PipelineStep>
+  report_date?: string
+  elapsed_ms?: number
+  error?: string
+  skipped?: boolean
+  reason?: string
+}
+
+export interface PipelineStatus {
+  enabled: boolean
+  schedule: string
+  refresh_data: boolean
+  use_llm: boolean
+  last_run: PipelineRunResult | null
+}

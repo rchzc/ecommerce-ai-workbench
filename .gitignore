@@ -40,3 +40,18 @@ logs/
 
 # 批量任务运行时产物（临时落盘，TTL 24h 惰性清理，不入库）
 backend/data/jobs/
+
+# 流水线运行期状态与生成的日报（可重跑重建）
+backend/data/pipeline_state.json
+backend/data/reports/
+
+# Vite 临时文件
+frontend/vite.config.ts.timestamp-*
+
+# 求职/简历/面试类文档（含真实姓名与联系方式，仅本地保留，不入库）
+简历*
+面试*
+JD解析*
+君睿诚*
+*投递版*
+飞书*

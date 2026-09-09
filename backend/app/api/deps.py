@@ -23,6 +23,8 @@ from ..core.vectorstore import VectorStore
 from ..errors import ConfigError
 from ..services.agent_service import AgentService, KnowledgeService
 from ..services.batch_service import BatchService
+from ..services.pipeline_service import PipelineService
+from ..services.report_service import ReportService
 
 _NOT_READY = "服务尚未就绪：组件未完成初始化，请检查启动日志"
 
@@ -63,6 +65,14 @@ def get_knowledge_service(request: Request) -> KnowledgeService:
 
 def get_batch_service(request: Request) -> BatchService:
     return _require(request, "batch_service")
+
+
+def get_report_service(request: Request) -> ReportService:
+    return _require(request, "report_service")
+
+
+def get_pipeline_service(request: Request) -> PipelineService:
+    return _require(request, "pipeline_service")
 
 
 def get_settings(request: Request) -> Settings:

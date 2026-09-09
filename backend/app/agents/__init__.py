@@ -13,6 +13,7 @@ from .ads import AdsAgent
 from .base import BaseAgent
 from .listing import ListingAgent
 from .logistics import LogisticsAgent
+from .replenish import ReplenishAgent
 from .review import ReviewAgent
 from .selection import SelectionAgent
 from .support import SupportAgent
@@ -24,6 +25,8 @@ AGENT_REGISTRY: dict[str, type[BaseAgent]] = {
     "ads": AdsAgent,
     "logistics": LogisticsAgent,
     "support": SupportAgent,
+    # 补货与物流同源知识库（data/docs/logistics），但决策口径不同，单独成 Agent
+    "replenish": ReplenishAgent,
 }
 
 

@@ -11,6 +11,7 @@ import {
 } from './forms'
 import { AgentResultView } from './components/Results'
 import { BatchPanel } from './components/BatchPanel'
+import { DashboardPanel } from './components/DashboardPanel'
 import { Icon } from './components/Icons'
 import './styles.css'
 
@@ -34,7 +35,7 @@ function localAgentList(): AgentMeta[] {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<'single' | 'batch'>('single')
+  const [tab, setTab] = useState<'single' | 'batch' | 'dashboard'>('single')
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [agents, setAgents] = useState<AgentMeta[]>([])
   const [active, setActive] = useState('selection')
@@ -169,9 +170,19 @@ export default function App() {
           <Icon name="layers" size={15} />
           批量任务
         </button>
+        <button className={`tab ${tab === 'dashboard' ? 'on' : ''}`} onClick={() => setTab('dashboard')}>
+          <Icon name="chart" size={15} />
+          数据看板
+        </button>
       </div>
 
-      {tab === 'batch' ? (
+      {tab === 'dashboard' ? (
+        <div className="layout">
+          <main className="col-main batch-col">
+            <DashboardPanel />
+          </main>
+        </div>
+      ) : tab === 'batch' ? (
         <div className="layout">
           <main className="col-main batch-col">
             <BatchPanel agents={agentList} />

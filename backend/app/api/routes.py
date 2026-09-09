@@ -22,6 +22,7 @@ from ..schemas import (
     RebuildResponse,
 )
 from ..services.agent_service import AgentService, KnowledgeService
+from ..services.report_service import ReportService
 from . import deps
 
 logger = logging.getLogger(__name__)
@@ -154,6 +155,73 @@ async def config_check(
         "top_k": s.top_k,
         "chunk_size": s.chunk_size,
         "chunk_overlap": s.chunk_overlap,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 销售日报与数据看板
+# ---------------------------------------------------------------------------
+
+@router.get("/report/dates", summary="日报可用日期列表")
+async def report_dates(
+    service: ReportService = Depends(deps.get_report_service),
+) -> dict:
+    """看板日期选择器的数据源：先拿日期范围再按日取详情。"""
+    dates = service.available_dates()
+    return {"items": dates, "latest": dates[-1] if dates else None}
+
+
+@router.get("/report/daily", summary="销售日报（指标聚合 + 规则预警）")
+async def report_daily(
+    date: str | None = None,
+    service: ReportService = Depends(deps.get_report_service),
+) -> dict:
+    """指定日期的日报；缺省取数据里最新一天。
+
+    预警由确定性规则引擎产出（库存水位 / 环比骤降 / 差评率 / 广告占比），
+    不调用大模型 —— 规则可解释、可单测、零成本。
+    """
+    return service.build(date).to_dict()
+
+
+@router.post("/report/daily/sync", summary="日报同步到飞书多维表格")
+async def report_daily_sync(
+    date: str | None = None,
+    service: ReportService = Depends(deps.get_report_service),
+) -> dict:
+    """把日报写入飞书多维表格。未配置飞书凭证时返回 503 + 补配置指引。"""
+    report = service.build(date)
+    return service.sync_to_feishu(report)
+
+
+# ---------------------------------------------------------------------------
+# 全链路流水线：拉数 → 日报/预警 →（可选）LLM 解读 → 飞书同步
+# ---------------------------------------------------------------------------
+
+@router.post("/pipeline/run", summary="立即执行全链路流水线")
+async def pipeline_run(
+    force: bool = False,
+    service=Depends(deps.get_pipeline_service),
+) -> dict:
+    """手动触发一次完整链路。
+
+    默认幂等：当日已成功同步则跳过；force=true 强制重跑（会再写一行飞书记录）。
+    每一步的结果都在返回值的 steps 里，失败也不抛 500 —— 结构化呈现。
+    """
+    return await service.run(force=force)
+
+
+@router.get("/pipeline/status", summary="流水线状态")
+async def pipeline_status(
+    service=Depends(deps.get_pipeline_service),
+) -> dict:
+    """调度配置 + 上次运行结果，前端流水线卡片的数据源。"""
+    return {
+        "enabled": service.settings.pipeline_enabled,
+        "schedule": service.settings.pipeline_schedule,
+        "refresh_data": service.settings.pipeline_refresh_data,
+        "use_llm": service.settings.pipeline_use_llm,
+        "last_run": service.last_run,
     }
 
 

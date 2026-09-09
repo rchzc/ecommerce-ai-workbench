@@ -55,6 +55,11 @@ def _settings(**overrides) -> Settings:
         workflow_api_key="",
         batch_max_rows=200,
         batch_concurrency=3,
+        feishu_app_id="",
+        feishu_app_secret="",
+        feishu_bitable_token="",
+        feishu_table_id="",
+        sales_data_dir="",
     )
     base.update(overrides)
     return Settings(**base)

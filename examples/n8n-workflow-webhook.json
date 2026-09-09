@@ -1,0 +1,110 @@
+{
+  "name": "跨境电商 AI 工作台 · Webhook 回调 Demo",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "手动触发",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [260, 320],
+      "id": "f1a2b3c4-0001-4a1a-8a01-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      // 这一行就是传给 Agent 的 payload，字段名即产品上下文。\n      // 真实场景里这里通常来自上一步（Google Sheet / Shopify / 表单）。\n      payload: {\n        lang: 'en',\n        platform: 'amazon',\n        product: 'Wireless Earbuds Pro',\n        selling_points: 'active noise cancellation, 40h playtime, IPX5 waterproof',\n        target_market: 'United States'\n      }\n    }\n  }\n];"
+      },
+      "name": "示例商品",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 320],
+      "id": "f1a2b3c4-0002-4a1a-8a02-000000000002"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WORKBENCH_BASE_URL }}/api/hooks/agent/listing",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.WORKFLOW_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}"
+      },
+      "name": "调用 AI 工作台 Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, 320],
+      "id": "f1a2b3c4-0003-4a1a-8a03-000000000003"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $json;\nconst v = d.validation || {};\n// 把 Webhook 回传的 validation 字段翻译成自动化流程能判断的信号：\n// pass -> 直接用；warn -> 留意；fail -> 转人工。\nreturn [\n  {\n    json: {\n      agent: d.agent,\n      title: d.data ? d.data.title : null,\n      validation_status: v.status,\n      need_human_review: v.status === 'fail',\n      raw_response: d\n    }\n  }\n];"
+      },
+      "name": "结果摘要",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1020, 320],
+      "id": "f1a2b3c4-0004-4a1a-8a04-000000000004"
+    }
+  ],
+  "connections": {
+    "手动触发": {
+      "main": [
+        [
+          {
+            "node": "示例商品",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "示例商品": {
+      "main": [
+        [
+          {
+            "node": "调用 AI 工作台 Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "调用 AI 工作台 Webhook": {
+      "main": [
+        [
+          {
+            "node": "结果摘要",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f1a2b3c4-0005-4a1a-8a05-000000000005",
+  "meta": {
+    "instanceId": "f1a2b3c4-0006-4a1a-8a06-000000000006"
+  },
+  "id": "f1a2b3c4-0007-4a1a-8a07-000000000007",
+  "tags": [
+    "ai-workbench",
+    "webhook",
+    "cross-border-ecommerce"
+  ],
+  "annotation": "演示：n8n 通过 X-API-Key 鉴权的对外 Webhook 触发 AI 工作台的 listing Agent，并消费返回的 validation 字段做自动化分支。"
+}

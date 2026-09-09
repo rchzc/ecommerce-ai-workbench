@@ -615,3 +615,94 @@ body {
   .tr { grid-template-columns: 1fr; gap: 4px; }
   .thead { display: none; }
 }
+
+/* ---------------------------------------------------------------- 数据看板 */
+.dash-actions { display: flex; align-items: center; gap: 10px; }
+.dash-date {
+  font-family: inherit; font-size: 12.5px; color: var(--tx);
+  background: var(--s2); border: 1px solid var(--bd); border-radius: 8px;
+  padding: 7px 10px; cursor: pointer;
+}
+.sync-msg {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12.5px; margin: 0 0 12px; padding: 8px 12px; border-radius: 9px;
+}
+.sync-msg.ok { color: var(--green); background: rgba(16, 185, 129, 0.1); }
+.sync-msg.bad { color: var(--rose); background: rgba(244, 63, 94, 0.1); }
+
+.kpi-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px; margin-bottom: 14px;
+}
+.kpi {
+  background: var(--s1); border: 1px solid var(--bd); border-radius: 12px;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
+}
+.kpi-label { font-size: 11.5px; color: var(--tx3); }
+.kpi-value { font-size: 19px; color: var(--tx); font-weight: 700; letter-spacing: 0.2px; }
+.kpi-delta { font-size: 11.5px; color: var(--tx2); }
+.kpi-delta.up { color: var(--rose); }   /* 涨红：国内电商惯例 */
+.kpi-delta.down { color: var(--green); }
+.kpi-alert { border-color: rgba(244, 63, 94, 0.4); }
+.kpi-alert .kpi-value { color: var(--rose); }
+
+.alert-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.alert-item {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 12.5px; padding: 9px 13px; border-radius: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.08);
+  color: var(--amber);
+}
+.alert-item.high {
+  border-color: rgba(244, 63, 94, 0.4); background: rgba(244, 63, 94, 0.09);
+  color: var(--rose);
+}
+
+.dash-grid {
+  display: grid; grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 12px; margin-top: 4px;
+}
+.dash-card {
+  background: var(--s1); border: 1px solid var(--bd); border-radius: 12px;
+  padding: 14px 16px; min-width: 0;
+}
+.dash-title { font-size: 12px; color: var(--tx2); margin: 0 0 12px; font-weight: 600; }
+
+.trend-chart {
+  display: flex; align-items: flex-end; gap: 5px; height: 150px;
+}
+.trend-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; }
+.trend-bar {
+  width: 100%; max-width: 26px; border-radius: 5px 5px 2px 2px;
+  background: linear-gradient(180deg, var(--brand), color-mix(in srgb, var(--brand) 40%, transparent));
+  min-height: 4px;
+}
+.trend-col:hover .trend-bar { background: var(--brand); }
+.trend-date { font-size: 9.5px; color: var(--tx3); white-space: nowrap; }
+
+.sku-shop { display: block; font-size: 10.5px; color: var(--tx3); font-style: normal; }
+.stock-low { color: var(--rose); font-weight: 600; }
+
+@media (max-width: 1080px) {
+  .dash-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 820px) {
+  .dash-grid { grid-template-columns: 1fr; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* 流水线卡片 */
+.pipeline-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  background: var(--s2); border: 1px solid var(--bd); border-radius: 12px;
+  padding: 12px 16px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.pipeline-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pipeline-info strong {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--tx);
+}
+.pipeline-actions { display: flex; gap: 8px; }
+.pipe-last { font-size: 11.5px; }
+.pipe-last.ok { color: var(--green); }
+.pipe-last.failed { color: var(--rose); }

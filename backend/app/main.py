@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import os
@@ -35,6 +36,9 @@ from .errors import AppError
 from .logging import Timer, new_request_id, request_id_var, setup_logging
 from .services.agent_service import AgentService, KnowledgeService
 from .services.batch_service import BatchService
+from .services.pipeline_service import PipelineService, scheduler_loop
+from .services.report_service import ReportService
+from .connectors.feishu_bitable import FeishuBitableConnector
 
 # 路径与开关统一由 config.py 解析（不再在此处散落 os.getenv），
 # 保证中间件、lifespan、静态托管读到的都是同一份配置。
@@ -79,6 +83,34 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         max_rows=settings.batch_max_rows,
         concurrency=settings.batch_concurrency,
     )
+    # 日报服务：飞书凭证齐备时挂真实连接器，否则不挂（同步端点会 503 给出补配置指引）。
+    # 日报生成与看板不依赖飞书，属于可选出口 —— 不能让"没接飞书"阻断核心链路。
+    app.state.report_service = ReportService(
+        settings=settings,
+        feishu=(
+            FeishuBitableConnector(
+                app_id=settings.feishu_app_id,
+                app_secret=settings.feishu_app_secret,
+                bitable_app_token=settings.feishu_bitable_token,
+                table_id=settings.feishu_table_id,
+            )
+            if settings.feishu_configured
+            else None
+        ),
+    )
+    # 全链路流水线：编排「拉数 → 日报/预警 → 可选 LLM 解读 → 飞书同步」
+    app.state.pipeline_service = PipelineService(
+        settings=settings,
+        report_service=app.state.report_service,
+        gateway=gateway,
+    )
+    # 定时调度：PIPELINE_ENABLED=true 时每天 PIPELINE_SCHEDULE 时刻自动执行
+    pipeline_task = None
+    if settings.pipeline_enabled:
+        pipeline_task = asyncio.create_task(
+            scheduler_loop(app.state.pipeline_service, settings.pipeline_schedule)
+        )
+        app.state.pipeline_task = pipeline_task
 
     logger.info(
         "startup.ready",
@@ -92,6 +124,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
 
     yield
+
+    # 优雅停机：先停定时调度循环，再走组件清理
+    pipeline_task = getattr(app.state, "pipeline_task", None)
+    if pipeline_task is not None:
+        pipeline_task.cancel()
+        try:
+            await pipeline_task
+        except asyncio.CancelledError:
+            pass
 
     logger.info("shutdown.complete", extra={"calls": gateway.usage.calls})
 
@@ -209,6 +250,8 @@ def create_app() -> FastAPI:
             "embedder",
             "agent_service",
             "knowledge_service",
+            "report_service",
+            "pipeline_service",
         )
         components_ready = all(
             getattr(app.state, name, None) is not None for name in components

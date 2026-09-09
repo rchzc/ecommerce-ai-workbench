@@ -123,6 +123,11 @@ def _settings() -> Settings:
         workflow_api_key="",
         batch_max_rows=200,
         batch_concurrency=3,
+        feishu_app_id="",
+        feishu_app_secret="",
+        feishu_bitable_token="",
+        feishu_table_id="",
+        sales_data_dir="",
     )
 
 

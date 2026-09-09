@@ -87,6 +87,18 @@ class UnauthorizedError(AppError):
     code = "unauthorized"
 
 
+class ExternalApiError(AppError):
+    """外部系统调用失败（飞书 / Shopify / Amazon 等，非 LLM）。
+
+    与 ModelCallError 区分开：模型调用走 LLM 网关有自己的重试与降级策略，
+    外部业务系统的失败（凭证错、表不存在、限流）处理方式不同 ——
+    凭证类问题 503 提示用户修配置，其余 502 带上游提示语。
+    """
+
+    status_code = 502
+    code = "external_api_error"
+
+
 class RateLimitError(AppError):
     """触发限流 —— 客户端需退避后重试。"""
 

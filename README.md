@@ -2,8 +2,8 @@
 
 > RAG + 多 Agent 的跨境电商运营决策系统 · 一人全栈交付 · 单容器可跑
 
-面向跨境电商运营（选品 / Listing / 评论 / 广告 / 物流 / 客服）的 AI 工作台。
-基于「领域知识库检索 + 大语言模型」的链路，把方法论沉淀成 6 个可独立调用的智能体，
+面向跨境电商运营（选品 / Listing / 评论 / 广告 / 物流 / 客服 / 补货）的 AI 工作台。
+基于「领域知识库检索 + 大语言模型」的链路，把方法论沉淀成 7 个可独立调用的智能体，
 并支持流式输出、模型自动路由、用量统计。
 
 ---
@@ -18,6 +18,7 @@
 | `ads` 广告诊断 | 规则预检 + 模型归因 + 分优先级动作 | ACOS / CTR / CVR |
 | `logistics` 物流 | 多渠道对比、成本时效、风险提示 | 目的地、重量、数量 |
 | `support` 客服 | 合规话术、情绪安抚、升级判断 | 客户问题、语言 |
+| `replenish` 补货 | 可用天数判定、建议下单量、断货与压货风险 | SKU、在库、在途、日均销量 |
 
 每个智能体走同一条链路：**检索领域知识 → 组装 Prompt → 调用模型 → 结构化解析 → 异常兜底**。
 
@@ -196,7 +197,7 @@ curl -X POST http://localhost:8000/api/hooks/agent/listing \
 │   ├── app/
 │   │   ├── api/        控制器（只做请求解析与响应格式化）
 │   │   ├── services/   业务编排（Agent 编排 / 知识库管理）
-│   │   ├── agents/     6 个智能体，各自实现 build_prompt + output_schema
+│   │   ├── agents/     7 个智能体，各自实现 build_prompt + output_schema
 │   │   ├── core/       LLM 网关 / 向量化 / 切分 / 向量库 / 规则校验 / CSV 读写 / 鉴权
 │   │   ├── config.py   配置（多厂商 preset + 启动校验）
 │   │   ├── errors.py   类型化错误
@@ -214,6 +215,7 @@ curl -X POST http://localhost:8000/api/hooks/agent/listing \
 `backend/data/docs/` 下的 21 篇运营方法论由 `backend/scripts/gen_docs.py` 生成，
 按 `selection / listing / review / ads / logistics / support` 六个领域分目录。
 要扩充知识，编辑脚本里的 `DOCS` 字典后重跑，或直接在对应目录放 `.md` 文件再 `POST /api/kb/rebuild`。
+（智能体有 7 个但领域只有 6 个：`replenish` 与 `logistics` 共用物流域文档，只是决策口径不同。）
 
 ## 接入真实店铺数据（数据连接器）
 

@@ -13,7 +13,9 @@ EXPECTED_DOMAINS = {"selection", "listing", "review", "ads", "logistics", "suppo
 
 
 def test_registry_covers_all_domains():
-    assert set(AGENT_REGISTRY) == EXPECTED_DOMAINS
+    """用子集而不是等号：新增 Agent（如 replenish 与 logistics 同源）
+    不应该要求回头改测试 —— 断言的是"知识域都被覆盖"，不是"只有这几个 Agent"。"""
+    assert {cls.domain for cls in AGENT_REGISTRY.values()} >= EXPECTED_DOMAINS
 
 
 def test_every_agent_declares_domain_name_and_description():
@@ -31,7 +33,7 @@ def test_every_agent_implements_output_schema():
 
 def test_list_agents_returns_serializable_items():
     items = list_agents()
-    assert {i["name"] for i in items} == EXPECTED_DOMAINS
+    assert {i["name"] for i in items} == set(AGENT_REGISTRY)
     for item in items:
         assert set(item) == {"name", "domain", "description"}
 

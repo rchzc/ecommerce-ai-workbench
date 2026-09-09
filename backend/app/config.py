@@ -147,6 +147,32 @@ class Settings:
     batch_max_rows: int
     # 批量任务的并发度：并发太高会触发厂商限流，太低则批量没有意义
     batch_concurrency: int
+    # --- 销售日报与飞书多维表格（可选集成）---
+    # 飞书凭证不配置时：日报生成/看板完全可用（本地 CSV 数据源），
+    # 只有「同步到飞书」端点返回 503 提示补配置 —— 这是可选功能，
+    # 不能像 LLM_API_KEY 那样在启动时强制校验，否则没接飞书的人服务都起不来。
+    feishu_app_id: str
+    feishu_app_secret: str
+    feishu_bitable_token: str
+    feishu_table_id: str
+    # 销售明细 CSV 目录（日报数据源），默认 backend/data/sales
+    sales_data_dir: str
+    # --- 全链路流水线（拉数 → 日报 → 预警 → 飞书），带默认值便于测试构造 ---
+    # 每天定时自动执行整条链路；默认 09:00（开盘前看到昨天的完整经营画面）
+    pipeline_enabled: bool = True
+    pipeline_schedule: str = "09:00"
+    # 流水线里是否调大模型做经营解读：默认关 —— 规则预警已可解释，
+    # LLM 解读是加分项不是必需品，开着就是每天固定烧 token
+    pipeline_use_llm: bool = False
+    # 是否自动从连接器刷新当日销售数据（mock 店铺导出 / 真实 SP-API 聚合）
+    pipeline_refresh_data: bool = True
+
+    @property
+    def feishu_configured(self) -> bool:
+        """飞书四件套是否齐备。同步端点据此决定 503 还是放行。"""
+        return all(
+            (self.feishu_app_id, self.feishu_app_secret, self.feishu_bitable_token, self.feishu_table_id)
+        )
 
     @property
     def provider_label(self) -> str:
@@ -200,6 +226,14 @@ def load_settings() -> Settings:
         raise ConfigError("BATCH_CONCURRENCY 必须 >= 1")
 
     # CORS / 路径 / 日志级别统一走上面那组函数，保证与 main.py 读到的完全一致
+    # 流水线调度时间必须是 HH:MM，配置错了启动即失败
+    try:
+        from datetime import datetime as _dt
+
+        _dt.strptime(_env("PIPELINE_SCHEDULE", "09:00"), "%H:%M")
+    except ValueError as exc:
+        raise ConfigError(f"PIPELINE_SCHEDULE 必须是 HH:MM 格式（如 09:00）：{exc}") from exc
+
     return Settings(
         provider=provider,
         api_key=api_key,
@@ -219,4 +253,14 @@ def load_settings() -> Settings:
         workflow_api_key=_env("WORKFLOW_API_KEY"),
         batch_max_rows=batch_max_rows,
         batch_concurrency=batch_concurrency,
+        feishu_app_id=_env("FEISHU_APP_ID"),
+        feishu_app_secret=_env("FEISHU_APP_SECRET"),
+        feishu_bitable_token=_env("FEISHU_BITABLE_APP_TOKEN"),
+        feishu_table_id=_env("FEISHU_TABLE_ID"),
+        sales_data_dir=os.getenv("SALES_DATA_DIR")
+        or os.path.join(BACKEND_DIR, "data", "sales"),
+        pipeline_enabled=_env("PIPELINE_ENABLED", "true").lower() != "false",
+        pipeline_schedule=_env("PIPELINE_SCHEDULE", "09:00"),
+        pipeline_use_llm=_env("PIPELINE_USE_LLM", "false").lower() == "true",
+        pipeline_refresh_data=_env("PIPELINE_REFRESH_DATA", "true").lower() != "false",
     )

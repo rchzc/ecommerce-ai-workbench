@@ -3,7 +3,10 @@ import type {
   AgentResult,
   BatchJob,
   BatchJobInit,
+  DailyReport,
   HealthResponse,
+  PipelineRunResult,
+  PipelineStatus,
   SSEEvent,
 } from './types'
 
@@ -81,6 +84,47 @@ export async function fetchBatch(jobId: string, includeRows = true): Promise<Bat
 /** 导出结果的下载地址（带 BOM，Excel 双击可开） */
 export function batchExportUrl(jobId: string, format: 'csv' | 'json' = 'csv'): string {
   return `${BASE}/batch/${jobId}/export?format=${format}`
+}
+
+// ---------------------------------------------------------------- 销售日报
+
+/** 日报可用日期列表（看板日期选择器） */
+export async function fetchReportDates(): Promise<{ items: string[]; latest: string | null }> {
+  const r = await fetch(`${BASE}/report/dates`)
+  if (!r.ok) throw new Error(await readError(r, '获取日报日期失败'))
+  return r.json()
+}
+
+/** 拉取指定日期日报；不传日期则取最新一天 */
+export async function fetchDailyReport(date?: string): Promise<DailyReport> {
+  const q = date ? `?date=${encodeURIComponent(date)}` : ''
+  const r = await fetch(`${BASE}/report/daily${q}`)
+  if (!r.ok) throw new Error(await readError(r, '获取日报失败'))
+  return r.json()
+}
+
+/** 把日报同步到飞书多维表格（后端未配置飞书凭证时返回 503 + 补配置指引） */
+export async function syncDailyReport(date?: string): Promise<{ date: string; created: number }> {
+  const q = date ? `?date=${encodeURIComponent(date)}` : ''
+  const r = await fetch(`${BASE}/report/daily/sync${q}`, { method: 'POST' })
+  if (!r.ok) throw new Error(await readError(r, '同步飞书失败'))
+  return r.json()
+}
+
+// ---------------------------------------------------------------- 全链路流水线
+
+/** 流水线状态：调度配置 + 上次运行结果 */
+export async function fetchPipelineStatus(): Promise<PipelineStatus> {
+  const r = await fetch(`${BASE}/pipeline/status`)
+  if (!r.ok) throw new Error(await readError(r, '获取流水线状态失败'))
+  return r.json()
+}
+
+/** 立即执行全链路（拉数 → 日报 → 预警 → 飞书）；幂等，force 强制重跑 */
+export async function runPipeline(force = false): Promise<PipelineRunResult> {
+  const r = await fetch(`${BASE}/pipeline/run?force=${force}`, { method: 'POST' })
+  if (!r.ok) throw new Error(await readError(r, '执行流水线失败'))
+  return r.json()
 }
 
 /** 流式执行：用原生 EventSource 无法带 body，这里用 fetch + ReadableStream 解析 SSE */
