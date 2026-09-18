@@ -11,6 +11,8 @@ import logging
 
 from fastapi import APIRouter, Depends
 
+from data_platform.report import ReportService
+
 from ..agents import list_agents
 from ..core.embeddings import Embedder
 from ..core.llm import LLMGateway
@@ -22,7 +24,6 @@ from ..schemas import (
     RebuildResponse,
 )
 from ..services.agent_service import AgentService, KnowledgeService
-from ..services.report_service import ReportService
 from . import deps
 
 logger = logging.getLogger(__name__)

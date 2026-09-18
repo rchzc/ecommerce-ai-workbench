@@ -19,6 +19,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from data_platform.batch import BatchService
+from data_platform.connectors.feishu_bitable import FeishuBitableConnector
+from data_platform.pipeline import PipelineService, scheduler_loop
+from data_platform.report import ReportService
+
 from .api import batch as batch_routes
 from .api import routes
 from .config import (
@@ -35,10 +40,6 @@ from .core.vectorstore import VectorStore
 from .errors import AppError
 from .logging import Timer, new_request_id, request_id_var, setup_logging
 from .services.agent_service import AgentService, KnowledgeService
-from .services.batch_service import BatchService
-from .services.pipeline_service import PipelineService, scheduler_loop
-from .services.report_service import ReportService
-from .connectors.feishu_bitable import FeishuBitableConnector
 
 # 路径与开关统一由 config.py 解析（不再在此处散落 os.getenv），
 # 保证中间件、lifespan、静态托管读到的都是同一份配置。
@@ -82,6 +83,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         agent_service=app.state.agent_service,
         max_rows=settings.batch_max_rows,
         concurrency=settings.batch_concurrency,
+        # 目录显式从 Settings 传进来：不传的话会退回包自己的 data/jobs，
+        # 任务产物就跟应用的数据目录分家了（排查时很费劲）
+        job_dir=settings.jobs_dir,
     )
     # 日报服务：飞书凭证齐备时挂真实连接器，否则不挂（同步端点会 503 给出补配置指引）。
     # 日报生成与看板不依赖飞书，属于可选出口 —— 不能让"没接飞书"阻断核心链路。

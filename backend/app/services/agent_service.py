@@ -23,9 +23,9 @@ from ..errors import ConfigError, KnowledgeBaseError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
-# 知识库源文档目录：backend/data/docs
-BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DOCS_DIR = os.path.join(BACKEND_DIR, "data", "docs")
+# 知识库源文档目录从 Settings.docs_dir 取（默认 backend/data/docs）。
+# 这里刻意不再按"文件在目录树里的深度"自己推算 —— 那种写法文件一挪位置就
+# 静默读错目录，是本次分层重构里真踩过的坑（数据中台包里已修，这里同源收敛）。
 
 # 每批向量化的文本数。
 # 阿里云百炼 text-embedding-v3 单次最多 10 条，超过会报
@@ -113,12 +113,15 @@ class KnowledgeService:
         store: VectorStore,
         embedder: Embedder,
         settings: Settings | None = None,
-        docs_dir: str = DOCS_DIR,
+        docs_dir: str | None = None,
     ) -> None:
         self.store = store
         self.embedder = embedder
         self.settings = settings
-        self.docs_dir = docs_dir
+        # 优先用显式传入的目录，其次跟 Settings 走。
+        # 两者都没有时置空串，rebuild() 会先因缺 settings 报错，
+        # 不会出现"用了一个随手拼出来的目录"这种更难查的情况。
+        self.docs_dir = docs_dir or (settings.docs_dir if settings else "")
 
     def stats(self) -> dict[str, Any]:
         return {

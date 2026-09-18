@@ -12,6 +12,7 @@ import pytest
 from app.config import COMPLEX_LENGTH_THRESHOLD, Settings
 from app.core.llm import classify_complexity
 from app.core.rerank import lexical_score, rerank
+from tests.fixtures import make_settings
 
 
 @dataclass
@@ -104,31 +105,9 @@ def test_empty_text_falls_back_to_light():
 
 
 def _settings() -> Settings:
-    return Settings(
-        provider="dashscope",
-        api_key="test-key",
-        api_base="http://example.invalid/v1",
-        model_light="light-model",
-        model_heavy="heavy-model",
-        model_embedding="emb-model",
-        supports_embedding=True,
-        top_k=4,
-        chunk_size=600,
-        chunk_overlap=50,
-        request_timeout=30,
-        cors_origins=["*"],
-        log_level="INFO",
-        chroma_dir="/tmp/chroma",
-        static_dir="/tmp/static",
-        workflow_api_key="",
-        batch_max_rows=200,
-        batch_concurrency=3,
-        feishu_app_id="",
-        feishu_app_secret="",
-        feishu_bitable_token="",
-        feishu_table_id="",
-        sales_data_dir="",
-    )
+    # 模型名故意不用夹具默认值，这样下面断言里出现 "light-model"/"heavy-model"
+    # 就能证明路由真的把 tier 映射到了对应的模型，而不是碰巧等于默认值。
+    return make_settings(model_light="light-model", model_heavy="heavy-model")
 
 
 def test_resolve_route_returns_consistent_model_and_tier():

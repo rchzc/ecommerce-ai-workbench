@@ -10,6 +10,7 @@ import pytest
 from app.config import Settings, load_settings
 from app.errors import ConfigError, KnowledgeBaseError, NotFoundError
 from app.services.agent_service import AgentService, KnowledgeService
+from tests.fixtures import make_settings
 
 
 class _FakeStore:
@@ -36,33 +37,7 @@ class _FakeEmbedder:
 
 
 def _settings(**overrides) -> Settings:
-    base = dict(
-        provider="dashscope",
-        api_key="test-key",
-        api_base="http://example.invalid/v1",
-        model_light="light",
-        model_heavy="heavy",
-        model_embedding="emb",
-        supports_embedding=True,
-        top_k=4,
-        chunk_size=600,
-        chunk_overlap=50,
-        request_timeout=30,
-        cors_origins=["*"],
-        log_level="INFO",
-        chroma_dir="/tmp/chroma",
-        static_dir="/tmp/static",
-        workflow_api_key="",
-        batch_max_rows=200,
-        batch_concurrency=3,
-        feishu_app_id="",
-        feishu_app_secret="",
-        feishu_bitable_token="",
-        feishu_table_id="",
-        sales_data_dir="",
-    )
-    base.update(overrides)
-    return Settings(**base)
+    return make_settings(**overrides)
 
 
 # ---------------------------------------------------------- 配置校验

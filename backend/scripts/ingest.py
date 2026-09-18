@@ -21,7 +21,7 @@ if BACKEND_DIR not in sys.path:
 from app.config import load_settings  # noqa: E402
 from app.core.embeddings import Embedder  # noqa: E402
 from app.core.vectorstore import VectorStore  # noqa: E402
-from app.services.agent_service import DOCS_DIR, KnowledgeService  # noqa: E402
+from app.services.agent_service import KnowledgeService  # noqa: E402
 
 PERSIST_DIR = os.getenv("CHROMA_DIR") or os.path.join(BACKEND_DIR, "chroma_db")
 
@@ -35,13 +35,13 @@ async def _main() -> int:
 
     store = VectorStore(settings, PERSIST_DIR)
     embedder = Embedder(settings)
-    service = KnowledgeService(
-        store=store, embedder=embedder, settings=settings, docs_dir=DOCS_DIR
-    )
+    # 文档目录跟 settings 走（settings.docs_dir），不再从服务模块里 import 一个
+    # 按目录深度算出来的常量 —— 那样一旦文件挪位置就静默指向空目录。
+    service = KnowledgeService(store=store, embedder=embedder, settings=settings)
 
     print(f"厂商：{settings.provider_label}")
     print(f"向量化：{embedder.mode}")
-    print(f"文档目录：{DOCS_DIR}")
+    print(f"文档目录：{settings.docs_dir}")
     print("开始构建知识库...")
 
     try:

@@ -16,15 +16,18 @@ from typing import Any
 
 from fastapi import Request
 
+# 业务实现都在同仓 packages/ 下的独立包里（路径引导见 app/__init__.py）。
+# 交付层只做装配，不持有业务逻辑 —— 这些包单独就能跑测试与演示。
+from data_platform.batch import BatchService
+from data_platform.pipeline import PipelineService
+from data_platform.report import ReportService
+
 from ..config import Settings
 from ..core.embeddings import Embedder
 from ..core.llm import LLMGateway
 from ..core.vectorstore import VectorStore
 from ..errors import ConfigError
 from ..services.agent_service import AgentService, KnowledgeService
-from ..services.batch_service import BatchService
-from ..services.pipeline_service import PipelineService
-from ..services.report_service import ReportService
 
 _NOT_READY = "服务尚未就绪：组件未完成初始化，请检查启动日志"
 

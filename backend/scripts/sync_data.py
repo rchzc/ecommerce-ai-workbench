@@ -26,17 +26,17 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.config import load_settings  # noqa: E402
-from app.connectors import (  # noqa: E402
-    ShopifyConnector,
-    mock_orders,
-    mock_reviews,
-    AmazonSpApiConnector,
-    mock_orders_amazon,
-    mock_reviews_amazon,
-)
 from app.core.embeddings import Embedder  # noqa: E402
 from app.core.vectorstore import VectorStore  # noqa: E402
 from app.services.agent_service import KnowledgeService  # noqa: E402
+from data_platform.connectors import (  # noqa: E402
+    AmazonSpApiConnector,
+    ShopifyConnector,
+    mock_orders,
+    mock_orders_amazon,
+    mock_reviews,
+    mock_reviews_amazon,
+)
 
 # backend/ 目录（与 agent_service 中 DOCS_DIR 的解析保持一致）
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

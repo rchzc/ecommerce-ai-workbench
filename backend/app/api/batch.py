@@ -16,14 +16,15 @@ import logging
 
 from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
 
+from data_platform.batch import BatchService
+from data_platform.tabular import parse_csv, to_csv
+from data_platform.validators import validate_output
+
 from ..config import Settings
 from ..core.auth import verify_api_key
-from ..core.tabular import parse_csv, to_csv
-from ..core.validators import validate_output
 from ..errors import ValidationError
 from ..schemas import BatchRunRequest, BatchRunResponse, HookRequest
 from ..services.agent_service import AgentService
-from ..services.batch_service import BatchService
 from . import deps
 
 logger = logging.getLogger(__name__)

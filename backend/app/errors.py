@@ -1,106 +1,44 @@
-"""类型化错误体系。
+"""类型化错误体系（本应用对外的统一入口）。
 
-设计要点（面试可讲）：
-1. 不同错误对应不同 HTTP 状态码：配置缺失 503（服务端没配好，重试无用）、
-   模型输出异常 502（上游返回了没法解析的内容）、参数错误 422（客户端的问题）。
-2. 错误对外只暴露 code + message，绝不返回堆栈 —— 堆栈会泄露内部路径和依赖版本。
-3. 业务代码 raise 类型化错误，全局处理器统一转 HTTP 响应，控制器里不写 try/except。
+错误契约的**唯一来源是共享包 `ecom_shared.errors`**。原因：数据中台、运行时底座、
+本应用层调的是同一个模型网关，"同一个上游故障"必须在哪一层都是同一个异常类、
+同一个状态码，前端才能统一处置；否则 A 层报 502、B 层报 500，调用方没法写出
+统一的退避/降级策略。
+
+因此本模块**不重新定义任何异常**，只做 re-export。这一点不是洁癖，是一个真踩过的坑：
+这里曾经自己定义了一份 `ConfigError`（继承本地 `AppError`），与共享包里的同名类
+是两个不同的类对象。结果包内抛出的 `ecom_shared.errors.ConfigError` 在 FastAPI 的
+全局处理器里匹配不上 `AppError` 分支 —— 本该返回 503「配置缺失，重试无用」的场景，
+实际返回了 500「服务器内部错误」，把"你没填 API Key"这个可自助修复的问题
+伪装成了"我们的服务器坏了"。
 """
 from __future__ import annotations
 
-from typing import Any
+# 单一来源：共享包。新增错误类型时改共享包，不要在这里加类。
+from ecom_shared.errors import (
+    AppError,
+    ConfigError,
+    ExternalApiError,
+    KnowledgeBaseError,
+    ModelCallError,
+    ModelOutputError,
+    NotFoundError,
+    RateLimitError,
+    ToolError,
+    UnauthorizedError,
+    ValidationError,
+)
 
-
-class AppError(Exception):
-    """所有业务异常的基类。子类只需覆写 status_code / code。"""
-
-    status_code: int = 500
-    code: str = "internal_error"
-
-    def __init__(self, message: str, detail: Any = None) -> None:
-        super().__init__(message)
-        self.message = message
-        self.detail = detail
-
-    def to_dict(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "error": {
-                "code": self.code,
-                "message": self.message,
-            }
-        }
-        if self.detail is not None:
-            payload["error"]["detail"] = self.detail
-        return payload
-
-
-class ConfigError(AppError):
-    """配置缺失或不合法 —— 服务端问题，重试无用。"""
-
-    status_code = 503
-    code = "config_error"
-
-
-class ModelOutputError(AppError):
-    """模型返回了无法解析的内容 —— 上游异常。"""
-
-    status_code = 502
-    code = "model_output_error"
-
-
-class ModelCallError(AppError):
-    """模型调用失败（超时、鉴权失败、限流）。"""
-
-    status_code = 502
-    code = "model_call_error"
-
-
-class KnowledgeBaseError(AppError):
-    """知识库不可用（未建库、检索失败、被占用）。"""
-
-    status_code = 503
-    code = "knowledge_base_error"
-
-
-class ValidationError(AppError):
-    """输入不合法 —— 客户端问题。
-
-    用于 Pydantic 结构校验覆盖不到的业务校验（如字段间约束、依赖外部字典的值）。
-    Pydantic 能表达的校验直接写在 schemas.py，由 FastAPI 自带 422 处理。
-    """
-
-    status_code = 422
-    code = "validation_error"
-
-
-class NotFoundError(AppError):
-    """资源不存在。"""
-
-    status_code = 404
-    code = "not_found"
-
-
-class UnauthorizedError(AppError):
-    """凭据缺失或无效 —— 客户端问题，重试无用，需换凭据。"""
-
-    status_code = 401
-    code = "unauthorized"
-
-
-class ExternalApiError(AppError):
-    """外部系统调用失败（飞书 / Shopify / Amazon 等，非 LLM）。
-
-    与 ModelCallError 区分开：模型调用走 LLM 网关有自己的重试与降级策略，
-    外部业务系统的失败（凭证错、表不存在、限流）处理方式不同 ——
-    凭证类问题 503 提示用户修配置，其余 502 带上游提示语。
-    """
-
-    status_code = 502
-    code = "external_api_error"
-
-
-class RateLimitError(AppError):
-    """触发限流 —— 客户端需退避后重试。"""
-
-    status_code = 429
-    code = "rate_limited"
+__all__ = [
+    "AppError",
+    "ConfigError",
+    "ExternalApiError",
+    "KnowledgeBaseError",
+    "ModelCallError",
+    "ModelOutputError",
+    "NotFoundError",
+    "RateLimitError",
+    "ToolError",
+    "UnauthorizedError",
+    "ValidationError",
+]

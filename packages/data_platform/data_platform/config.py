@@ -135,17 +135,21 @@ class Settings(SharedSettings):
         )
 
 
-def load_settings(env_file: str | None = None) -> Settings:
+def load_settings(env_file: str | None = None, *, load_env_file: bool = True) -> Settings:
     """读取共享配置 + 本包配置，一次性校验。
 
     共享部分复用 `ecom_shared.config.load_settings()`，本包只补自己的字段 ——
     不去复制一份厂商 preset 表，否则换厂商时要改两处。
+
+    load_env_file=False 透传给共享包，含义见 `ecom_shared.config.load_settings`：
+    宿主应用通常已在导入阶段读过 .env，此时应跳过重复读文件，避免"读文件"这个
+    有副作用的动作盖掉调用方精心设置的环境变量。
     """
     from ecom_shared.config import load_settings as load_shared
 
     # 共享部分交给共享包读（provider preset、密钥、检索参数…），
     # 本包只补自己的字段 —— 换厂商时不用改两处。
-    shared = load_shared(env_file)
+    shared = load_shared(env_file, load_env_file=load_env_file)
 
     try:
         from datetime import datetime as _dt
