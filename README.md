@@ -1,10 +1,23 @@
-# 跨境电商 AI 运营工作台
+# 跨境电商 AI 生态 · RAG 知识库 / 业务 Agent 集群 / 工程化交付
 
 > RAG + 多 Agent 的跨境电商运营决策系统 · 一人全栈交付 · 单容器可跑
+> 底座层（Agent 运行时 · MCP 工具集群 · LLM 网关）已拆为独立仓库 → [`ecom-agent-runtime`](https://github.com/rchzc/ecom-agent-runtime)
 
 面向跨境电商运营（选品 / Listing / 评论 / 广告 / 物流 / 客服 / 补货）的 AI 工作台。
 基于「领域知识库检索 + 大语言模型」的链路，把方法论沉淀成 7 个可独立调用的智能体，
-并支持流式输出、模型自动路由、用量统计。
+并支持流式输出、模型自动路由、批量任务。
+
+---
+
+## 这个仓库包含哪三层
+
+| 层 | 做什么 | 代码位置 |
+| --- | --- | --- |
+| **② 数据层** | RAG 知识库（26 篇 / 384 切片 · 三级切分 + 域隔离 · 向量召回 + 词法重排 α=0.7）· AI 数据中台（定时流水线「拉数 → 聚合 → 规则预警 → 写飞书多维表格」）· 平台数据连接器（Shopify / Amazon SP-API / 飞书） | `backend/app/core/{rag,rerank,vectorstore,embeddings,tabular}.py`、`backend/app/connectors/`、`backend/app/services/pipeline_service.py`、`backend/scripts/eval_retrieval.py` |
+| **③ 业务层** | 7 个业务 Agent（选品 / Listing / 评论 / 广告 / 物流 / 客服 / 补货，覆盖 6 个业务域）· 批量任务与规则校验 · SSE 流式输出 · Prompt 与结构化输出契约 | `backend/app/agents/`、`backend/app/services/agent_service.py`、`backend/app/services/batch_service.py`、`backend/app/api/routes.py` |
+| **④ 交付层** | 单容器交付（多阶段构建 · 非 root · 健康检查 · 优雅停机）· 128 个测试用例 · Webhook 对外集成（n8n / Dify / Coze）· 类型化错误体系与结构化日志 | `Dockerfile`、`docker-compose.yml`、`docker-entrypoint.sh`、`backend/app/api/batch.py`、`backend/tests/`、`backend/app/{errors,logging,config}.py` |
+
+> ②③④ 共用同一个 FastAPI 后端与 `backend/app/core/` 基础设施，因此按层组织在**同一个仓库**里，而不是硬拆成三个仓库——硬拆会让数据层与业务层互相依赖同一份 `core`，只能靠 submodule 或私有包来绕，属于为了拆而拆。
 
 ---
 
@@ -203,7 +216,7 @@ curl -X POST http://localhost:8000/api/hooks/agent/listing \
 │   │   ├── errors.py   类型化错误
 │   │   ├── logging.py  结构化日志 + 请求 ID
 │   │   └── main.py     FastAPI 入口（生命周期 / 中间件 / 静态托管）
-│   ├── data/docs/      知识库源文件（21 篇，按领域分目录）
+│   ├── data/docs/      知识库源文件（26 篇，按领域分目录）
 │   └── scripts/        gen_docs.py（生成文档）/ sync_data.py（接入真实店铺数据）/ eval_retrieval.py（检索质量评测）
 ├── frontend/           React 18 + Vite + TypeScript
 ├── Dockerfile          多阶段构建，单容器交付
@@ -212,7 +225,7 @@ curl -X POST http://localhost:8000/api/hooks/agent/listing \
 
 ## 知识库文档
 
-`backend/data/docs/` 下的 21 篇运营方法论由 `backend/scripts/gen_docs.py` 生成，
+`backend/data/docs/` 下的 26 篇运营方法论由 `backend/scripts/gen_docs.py` 生成，
 按 `selection / listing / review / ads / logistics / support` 六个领域分目录。
 要扩充知识，编辑脚本里的 `DOCS` 字典后重跑，或直接在对应目录放 `.md` 文件再 `POST /api/kb/rebuild`。
 （智能体有 7 个但领域只有 6 个：`replenish` 与 `logistics` 共用物流域文档，只是决策口径不同。）
@@ -261,7 +274,7 @@ python scripts/eval_retrieval.py            # 离线语料覆盖检查（不联�
 python scripts/eval_retrieval.py --online   # 再跑在线向量召回，输出 Recall@k（需 LLM Key）
 ```
 
-- **离线检查**：把 21 篇文档按现有切分切块，在每个业务域内用关键词排序，校验 6 个评测问题的
+- **离线检查**：把 26 篇文档按现有切分切块，在每个业务域内用关键词排序，校验 6 个评测问题的
   期望知识是否落在 top4。当前结果 **6/6 = 100% 覆盖**（证明知识库"覆盖"了这些问题且可达）。
 - **在线检查**：真实向量化 → 检索 → rerank 重排 → 校验命中，输出 **Recall@k**。
 - 评测集在脚本顶部 `EVAL_QUERIES`，覆盖选品 / Listing / 评论 / 广告 / 物流 / 客服六个域，可增删。
