@@ -29,18 +29,52 @@ from ecom_shared.errors import ConfigError
 # 本文件位于 packages/data_platform/data_platform/config.py
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 PACKAGE_ROOT = os.path.dirname(_THIS_DIR)  # packages/data_platform
-
-# ---------------------------------------------------------------------------
-# 路径：支持环境变量覆盖，默认落在包自己的 data/ 下
-# 环境变量覆盖是为了让容器部署时能把数据挂到卷上，而不用改代码
-# ---------------------------------------------------------------------------
+# 注意层次：PACKAGE_ROOT/data 是「包自带的语料与样例数据」，
+# 不是仓库根的 data/。宿主应用（FastAPI 交付层）通过 DATA_DIR 指向它自己的目录。
 DATA_DIR = os.getenv("DATA_DIR") or os.path.join(PACKAGE_ROOT, "data")
-DOCS_DIR = os.path.join(DATA_DIR, "docs")          # 知识库语料 <domain>/*.md
-IMPORT_DIR = os.path.join(DATA_DIR, "import")      # 平台导出文件落盘处
-DEFAULT_JOB_DIR = os.path.join(DATA_DIR, "jobs")   # 批量任务产物
-REPORT_DIR = os.path.join(DATA_DIR, "reports")     # 日报与看板快照
-SALES_DIR = os.getenv("SALES_DIR") or os.path.join(DATA_DIR, "sales")  # 销售明细 CSV
-STATE_PATH = os.path.join(DATA_DIR, "pipeline_state.json")             # 流水线幂等状态
+
+
+def resolve_paths(data_dir: str | None = None) -> dict[str, str]:
+    """由「一个数据根目录」推导出全部子路径。
+
+    **集中在这里的意义**：容器部署只需要把 `DATA_DIR` 指到挂载卷上，
+    docs / import / jobs / reports / sales / 流水线状态文件一起跟着走，
+    不用逐个改、也不会出现"有的模块读新目录、有的读旧目录"。
+
+    每次调用重新读环境变量，所以它可以在运行期被再次调用 ——
+    `load_settings()` 用它拿当前值，而不是复用 import 时算好的模块常量。
+    这个区别很实在：宿主应用常常是先 import 再设置环境变量，
+    只认 import 时那一份的话，配置就静默失效了。
+
+    单个子目录仍可用更具体的环境变量单独覆盖（比如把 sales 指向外部导出目录）。
+    """
+    root = data_dir or os.getenv("DATA_DIR") or os.path.join(PACKAGE_ROOT, "data")
+    return {
+        "data_dir": root,
+        # 知识库语料 <domain>/*.md
+        "docs_dir": os.getenv("DOCS_DIR") or os.path.join(root, "docs"),
+        # 平台导出文件落盘处
+        "import_dir": os.getenv("IMPORT_DIR") or os.path.join(root, "import"),
+        # 批量任务产物
+        "jobs_dir": os.getenv("JOBS_DIR") or os.path.join(root, "jobs"),
+        # 日报与看板快照
+        "reports_dir": os.getenv("REPORTS_DIR") or os.path.join(root, "reports"),
+        # 销售明细 CSV
+        "sales_data_dir": os.getenv("SALES_DATA_DIR") or os.path.join(root, "sales"),
+        # 流水线幂等状态文件
+        "state_path": os.getenv("STATE_PATH") or os.path.join(root, "pipeline_state.json"),
+    }
+
+
+# import 时的快照，只作为「函数签名里的默认值」与文档用途。
+# 服务类一律从 Settings 取路径，不读这些常量 —— 否则 Settings 就成了摆设。
+_DEFAULTS = resolve_paths()
+DOCS_DIR = _DEFAULTS["docs_dir"]
+IMPORT_DIR = _DEFAULTS["import_dir"]
+DEFAULT_JOB_DIR = _DEFAULTS["jobs_dir"]
+REPORT_DIR = _DEFAULTS["reports_dir"]
+SALES_DIR = _DEFAULTS["sales_data_dir"]
+STATE_PATH = _DEFAULTS["state_path"]
 
 
 def _env(key: str, default: str = "") -> str:
@@ -70,6 +104,7 @@ class Settings(SharedSettings):
     jobs_dir: str = DEFAULT_JOB_DIR
     reports_dir: str = REPORT_DIR
     sales_data_dir: str = SALES_DIR
+    state_path: str = STATE_PATH
     # --- 飞书多维表格（可选集成）---
     # 不配置时：日报生成/看板完全可用（本地 CSV 数据源），
     # 只有「同步到飞书」这一步返回 503 提示补配置。
@@ -126,14 +161,13 @@ def load_settings(env_file: str | None = None) -> Settings:
     if batch_concurrency < 1:
         raise ConfigError("BATCH_CONCURRENCY 必须 >= 1")
 
+    # 路径在这里现算，不复用模块常量：宿主应用可能先 import 本包、
+    # 再设置 DATA_DIR，那时模块常量已经定型了。
+    paths = resolve_paths()
+
     return Settings(
         **{f: getattr(shared, f) for f in shared.__dataclass_fields__},
-        data_dir=DATA_DIR,
-        docs_dir=DOCS_DIR,
-        import_dir=IMPORT_DIR,
-        jobs_dir=DEFAULT_JOB_DIR,
-        reports_dir=REPORT_DIR,
-        sales_data_dir=_env("SALES_DATA_DIR") or SALES_DIR,
+        **paths,
         feishu_app_id=_env("FEISHU_APP_ID"),
         feishu_app_secret=_env("FEISHU_APP_SECRET"),
         feishu_bitable_token=_env("FEISHU_BITABLE_APP_TOKEN"),
@@ -150,6 +184,7 @@ def load_settings(env_file: str | None = None) -> Settings:
 __all__ = [
     "Settings",
     "load_settings",
+    "resolve_paths",
     "REPO_ROOT",
     "PACKAGE_ROOT",
     "DATA_DIR",

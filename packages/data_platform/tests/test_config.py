@@ -95,6 +95,43 @@ class TestPathConstants:
         assert len(md) == 26, f"语料篇数应为 26，实际 {len(md)}"
 
 
+class TestResolvePaths:
+    def test_single_root_derives_every_subdir(self):
+        """给一个数据根，所有子路径都跟着走 —— 容器挂卷只改这一个变量。"""
+        paths = cfg.resolve_paths(r"D:\vol")
+        assert paths["data_dir"] == r"D:\vol"
+        for key, value in paths.items():
+            if key != "data_dir":
+                assert value.startswith(r"D:\vol"), (key, value)
+
+    def test_reads_env_at_call_time_not_import_time(self, monkeypatch):
+        """这个区别很实在：宿主应用常常先 import 本包、再设置 DATA_DIR。
+
+        只认 import 时的快照，配置就会静默失效 —— 而且不报错，
+        表现为"数据写到了别的目录"。
+        """
+        before = cfg.resolve_paths()["data_dir"]
+        monkeypatch.setenv("DATA_DIR", r"D:\other")
+        after = cfg.resolve_paths()["data_dir"]
+        assert after == r"D:\other"
+        assert after != before
+
+    def test_subdir_can_be_overridden_individually(self, monkeypatch):
+        """整体根目录之外，单个子目录仍能单独指定（如把 sales 指向外部导出目录）。"""
+        monkeypatch.setenv("SALES_DATA_DIR", r"D:\exports")
+        paths = cfg.resolve_paths(r"D:\vol")
+        assert paths["sales_data_dir"] == r"D:\exports"
+        assert paths["docs_dir"].startswith(r"D:\vol")
+
+    def test_load_settings_uses_fresh_paths(self, monkeypatch):
+        """load_settings 必须用现算的路径，不能复用模块常量。"""
+        monkeypatch.setenv("DATA_DIR", r"D:\vol2")
+        s = load_settings()
+        assert s.data_dir == r"D:\vol2"
+        assert s.state_path == os.path.join(r"D:\vol2", "pipeline_state.json")
+        assert s.reports_dir == os.path.join(r"D:\vol2", "reports")
+
+
 class TestSettingsShape:
     def test_extends_shared_settings(self):
         """业务 Settings 必须继承共享 Settings —— 共享层与业务层的分层契约。"""

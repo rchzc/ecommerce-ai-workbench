@@ -35,13 +35,16 @@ from typing import Any
 from ecom_shared.errors import ConfigError, ExternalApiError
 from ecom_shared.gateway import LLMGateway, parse_json_lenient
 
-from .config import STATE_PATH, Settings
+from .config import Settings
 from .report import ReportService
 
 logger = logging.getLogger(__name__)
 
 # 路径常量集中在 .config：以前这里自己按"文件在目录树里的深度"算 BACKEND_DIR，
 # 包一搬位置就静默指到别的目录 —— 这次重构正好踩到，改完只剩一个来源。
+# 状态文件路径本身从 Settings.state_path 取（见 __init__），不读模块常量，
+# 这样宿主应用把 DATA_DIR 指到挂载卷上就能生效。
+#
 # 流水线自己产出的销售行单独落文件，不污染 sample_sales.csv（原始导入与自动产出分离）
 PIPELINE_SALES_FILE = "pipeline_rows.csv"
 
@@ -75,6 +78,7 @@ class PipelineService:
         self.settings = settings
         self.report = report_service
         self.gateway = gateway
+        self.state_path = settings.state_path
         self.last_run: dict[str, Any] = self._load_state()
 
     # ------------------------------------------------------------------
@@ -313,19 +317,20 @@ class PipelineService:
     def _load_state(self) -> dict[str, Any]:
         """启动时恢复上次运行状态（幂等判重的依据）。"""
         try:
-            with open(STATE_PATH, encoding="utf-8") as f:
+            with open(self.state_path, encoding="utf-8") as f:
                 return json.load(f)
         except (OSError, ValueError):
+            # 状态文件缺失或被写坏时当作"没有历史状态"继续跑，不能启动就崩
             return {}
 
     def _save_state(self) -> None:
         """写失败不致命：大不了重复同步一天，不该因状态文件写不进去崩掉链路。"""
         try:
-            os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
-            with open(STATE_PATH, "w", encoding="utf-8") as f:
+            os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
+            with open(self.state_path, "w", encoding="utf-8") as f:
                 json.dump(self.last_run, f, ensure_ascii=False, indent=2)
         except OSError:
-            logger.warning("pipeline.state_save_failed", extra={"path": STATE_PATH})
+            logger.warning("pipeline.state_save_failed", extra={"path": self.state_path})
 
 
 # ----------------------------------------------------------------------

@@ -7,7 +7,7 @@
 
 ```bash
 python demo.py     # 不需要 API Key，不联网，直接跑
-pytest             # 76 个用例，全程离线
+pytest             # 81 个用例，全程离线
 ```
 
 ---

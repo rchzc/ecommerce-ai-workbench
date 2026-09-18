@@ -52,27 +52,24 @@ class TestAggregation:
         assert "## 核心指标" in report.markdown
         assert "## 分店铺" in report.markdown
 
-    def test_persist_to_reports_dir(self, service, tmp_path, monkeypatch):
-        from data_platform import report as rs
-
-        monkeypatch.setattr(rs, "REPORT_DIR", str(tmp_path / "reports"))
+    def test_persist_to_reports_dir(self, service, tmp_path):
+        """报表落在 settings.reports_dir 下 —— 不是模块常量、不是仓库里。"""
         report = service.build()
         assert report.saved_to
         assert os.path.isfile(report.saved_to)
+        assert os.path.dirname(report.saved_to) == str(tmp_path / "reports")
         assert "2026-09-02" in open(report.saved_to, encoding="utf-8").read()
 
-    def test_persist_failure_does_not_block_report(self, service, tmp_path, monkeypatch):
+    def test_persist_failure_does_not_block_report(self, tmp_path):
         """落盘失败只记日志：看板照样要能渲染，不能因为磁盘问题整页 500。
 
         用一个**文件**当报表目录：`os.makedirs` 会抛 FileExistsError(OSError)，
         正好命中 `_persist` 的降级分支。用含空字符的路径不行 ——
         那抛的是 ValueError，压根进不了 OSError 分支，测了个假的。
         """
-        from data_platform import report as rs
-
         blocker = tmp_path / "blocked"
         blocker.write_text("not a dir", encoding="utf-8")
-        monkeypatch.setattr(rs, "REPORT_DIR", str(blocker))
+        service = ReportService(dataclasses.replace(make_settings(tmp_path), reports_dir=str(blocker)))
         report = service.build()
         assert report.date == "2026-09-02"
         assert report.saved_to == ""

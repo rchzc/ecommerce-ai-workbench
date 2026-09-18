@@ -33,12 +33,13 @@ from typing import Any
 
 from ecom_shared.errors import ConfigError, ExternalApiError, NotFoundError, ValidationError
 
-from .config import REPORT_DIR, Settings
+from .config import Settings
 from .connectors.feishu_bitable import FeishuBitableConnector, MockFeishuBitableConnector
 
 logger = logging.getLogger(__name__)
 
-# REPORT_DIR 由 .config 统一提供（见 config.py 里关于"路径常量只留一个来源"的说明）
+# 报表目录由 Settings.reports_dir 提供（见 config.py 的路径常量说明）；
+# 服务实例在 __init__ 时从 Settings 取，不读 import 时的模块常量。
 
 # 销售明细 CSV 的列约定（运营从各平台导出后按此格式落盘即可）
 REQUIRED_COLUMNS = {"date", "shop", "sku", "orders", "units", "revenue"}
@@ -87,6 +88,9 @@ class ReportService:
 
     def __init__(self, settings: Settings, feishu: FeishuBitableConnector | None = None) -> None:
         self.sales_dir = settings.sales_data_dir
+        # 报表落盘目录从 Settings 取，不读模块常量 ——
+        # 模块常量是 import 时的快照，宿主应用先 import 再设 DATA_DIR 就失效了。
+        self.reports_dir = settings.reports_dir
         # 飞书连接器：配置齐备时走真实连接器，否则给 mock（同步端点仍会 503 拦截，
         # mock 只用于本地链路自测，不会把"没配凭证"伪装成"同步成功"）
         self.feishu = feishu
@@ -399,12 +403,11 @@ class ReportService:
                 lines.append(f"| {s['shop']} | {s['sku']} | {s['revenue']:,.2f} | {s['units']} | {stock_txt} |")
         return "\n".join(lines)
 
-    @staticmethod
-    def _persist(report: DailyReport) -> str:
+    def _persist(self, report: DailyReport) -> str:
         """日报落盘，供审计与后续推送（邮件 / 飞书机器人）复用。"""
         try:
-            os.makedirs(REPORT_DIR, exist_ok=True)
-            path = os.path.join(REPORT_DIR, f"daily_{report.date}.md")
+            os.makedirs(self.reports_dir, exist_ok=True)
+            path = os.path.join(self.reports_dir, f"daily_{report.date}.md")
             with open(path, "w", encoding="utf-8") as f:
                 f.write(report.markdown)
             return path

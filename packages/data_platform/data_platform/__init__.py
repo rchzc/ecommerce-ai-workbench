@@ -30,6 +30,7 @@ from .config import (
     STATE_PATH,
     Settings,
     load_settings,
+    resolve_paths,
 )
 from .pipeline import PipelineService, parse_schedule
 from .report import DailyReport, ReportService
@@ -40,6 +41,7 @@ __all__ = [
     # 配置与路径
     "Settings",
     "load_settings",
+    "resolve_paths",
     "PACKAGE_ROOT",
     "DATA_DIR",
     "DOCS_DIR",

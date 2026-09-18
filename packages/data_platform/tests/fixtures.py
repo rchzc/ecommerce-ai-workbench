@@ -67,6 +67,7 @@ def make_settings(tmp_path, csv_text: str = BASE_ROWS, **overrides) -> Settings:
         jobs_dir=str(tmp_path / "jobs"),
         reports_dir=str(tmp_path / "reports"),
         sales_data_dir=str(sales_dir),
+        state_path=str(tmp_path / "pipeline_state.json"),
         batch_max_rows=10,
         batch_concurrency=2,
     )

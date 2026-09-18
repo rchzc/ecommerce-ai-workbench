@@ -27,7 +27,7 @@ from typing import Any
 
 from ecom_shared.errors import AppError, NotFoundError, ValidationError
 
-from .config import DEFAULT_JOB_DIR
+from .config import resolve_paths
 from .tabular import flatten
 from .validators import validate_output
 
@@ -48,7 +48,8 @@ ROW_OK = "ok"
 ROW_FAILED = "failed"
 ROW_PENDING = "pending"
 
-# DEFAULT_JOB_DIR 由 .config 统一提供（见 config.py 里关于"路径常量只留一个来源"的说明）
+# 任务产物目录由构造参数决定，缺省时用 config.resolve_paths() 现算
+# （见 config.py 里关于"路径常量只留一个来源"的说明）。
 
 _ROW_LABELS = {ROW_OK: "成功", ROW_FAILED: "失败", ROW_PENDING: "处理中"}
 _VALIDATION_LABELS = {"pass": "通过", "warn": "需留意", "fail": "需人工处理"}
@@ -156,12 +157,14 @@ class BatchService:
         agent_service: Any,
         max_rows: int = 200,
         concurrency: int = 3,
-        job_dir: str = DEFAULT_JOB_DIR,
+        job_dir: str | None = None,
     ) -> None:
         self.agent_service = agent_service
         self.max_rows = max_rows
         self.concurrency = concurrency
-        self.job_dir = job_dir
+        # 不给就现算一次（读当前环境变量），而不是用 import 时的模块常量：
+        # 宿主应用常常先 import 再设 DATA_DIR，只认旧快照的话配置就静默失效了。
+        self.job_dir = job_dir or resolve_paths()["jobs_dir"]
         self._jobs: dict[str, BatchJob] = {}
         self._idempotency: dict[str, str] = {}
         # 持有 task 引用：不保存的话 asyncio 可能在任务完成前把它回收掉
