@@ -1,0 +1,39 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# --- 虚拟环境 ---
+.venv/
+venv/
+env/
+
+# --- 配置与密钥（绝不提交） ---
+.env
+.env.local
+
+# --- 运行期产物 ---
+# 注意：data/docs（语料）与 data/sales/sample_sales.csv（样例数据）是要提交的，
+# 所以这里只能逐个排除产物，不能整目录忽略 data/。
+data/reports/
+data/jobs/
+data/import/jobs_demo/
+data/import/docs_demo/
+data/pipeline_state.json
+data/sales/pipeline_rows.csv
+*.npy
+logs/
+
+# --- 测试与工具缓存 ---
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- 编辑器 / 系统 ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

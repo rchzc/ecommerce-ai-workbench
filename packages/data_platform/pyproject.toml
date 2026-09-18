@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ecom-data-platform"
+version = "1.0.0"
+description = "AI 数据中台：多源数据接入（Shopify / Amazon SP-API / 飞书多维表格）+ 表格管道与规则校验 + 每日指标流水线与预警 + 批量任务编排"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Li Wenyu" }]
+
+dependencies = [
+    # 共享集群：模型接入、检索、记忆、工具协议全部复用它，本包不重复实现
+    "ecom-agent-shared",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.urls]
+# 本生态共 3 个仓库：共享集群 ← 运行时底座 ← 本仓（应用层）
+Shared = "https://github.com/rchzc/ecom-agent-shared"
+Runtime = "https://github.com/rchzc/ecom-agent-runtime"
+
+[tool.setuptools]
+packages = ["data_platform", "data_platform.connectors"]
+# 显式声明没有顶层单文件模块：仓库根的 conftest.py / demo.py / _bootstrap.py
+# 只服务于"clone 下来直接跑"，不该被装进 site-packages。
+py-modules = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
