@@ -251,14 +251,16 @@ def main() -> int:
         app_id = os.getenv("FEISHU_APP_ID", "")
         app_secret = os.getenv("FEISHU_APP_SECRET", "")
         app_token = os.getenv("FEISHU_BITABLE_APP_TOKEN", "")
-        table_id = os.getenv("FEISHU_BITABLE_TABLE_ID", "")
+        # 兼容两种命名：backend/.env 里写的是 FEISHU_TABLE_ID（config.py 读的就是这个），
+        # 本脚本历史上用的是 FEISHU_BITABLE_TABLE_ID。两个都认，避免现场配置明明填了却报"缺少配置"。
+        table_id = os.getenv("FEISHU_BITABLE_TABLE_ID") or os.getenv("FEISHU_TABLE_ID", "")
         missing = [
             name
             for name, value in (
                 ("FEISHU_APP_ID", app_id),
                 ("FEISHU_APP_SECRET", app_secret),
                 ("FEISHU_BITABLE_APP_TOKEN", app_token),
-                ("FEISHU_BITABLE_TABLE_ID", table_id),
+                ("FEISHU_BITABLE_TABLE_ID（或 FEISHU_TABLE_ID）", table_id),
             )
             if not value
         ]
@@ -308,8 +310,9 @@ def main() -> int:
         print("（dry-run：未回写。加 --apply 真正写入飞书表格）")
         return 0
 
-    token = get_tenant_token(os.environ["FEISHU_APP_ID"], os.environ["FEISHU_APP_SECRET"])
-    batch_update(token, os.environ["FEISHU_BITABLE_APP_TOKEN"], os.environ["FEISHU_BITABLE_TABLE_ID"], updates)
+    # 复用上面解析好的变量（表 ID 的两种命名已在解析处统一兼容）
+    token = get_tenant_token(app_id, app_secret)
+    batch_update(token, app_token, table_id, updates)
     print(f"已回写 {len(updates)} 行到飞书多维表格")
     return 0
 

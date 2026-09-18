@@ -266,9 +266,14 @@ def create_app() -> FastAPI:
     if os.path.isdir(STATIC_DIR):
         app.mount("/assets", StaticFiles(directory=os.path.join(STATIC_DIR, "assets")), name="assets")
 
+        # index.html 必须禁止缓存：它引用的是带 hash 的 assets 文件，
+        # 一旦被浏览器缓存，重新构建后用户会继续加载旧页面 —— 前端改动会"静默不生效"，
+        # 只靠用户手动强刷才能看到。assets 带 hash 可长期缓存，不受影响。
+        _NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
+
         @app.get("/")
         async def index():
-            return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+            return FileResponse(os.path.join(STATIC_DIR, "index.html"), headers=_NO_CACHE)
 
         @app.get("/{full_path:path}")
         async def spa_fallback(full_path: str):
@@ -276,7 +281,7 @@ def create_app() -> FastAPI:
             target = os.path.join(STATIC_DIR, full_path)
             if os.path.isfile(target):
                 return FileResponse(target)
-            return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+            return FileResponse(os.path.join(STATIC_DIR, "index.html"), headers=_NO_CACHE)
     else:
         @app.get("/")
         async def dev_index():

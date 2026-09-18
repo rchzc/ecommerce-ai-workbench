@@ -520,7 +520,10 @@ body {
 }
 
 /* ---------------------------------------------------------- 批量任务 */
-.batch-col { max-width: 1080px; margin: 0 auto; width: 100%; }
+/* 批量任务 / 数据看板页签：.layout 是三列网格（246px + 1fr + 330px），
+   而这两个页签只放一个子元素，不跨列的话会被塞进第一列的 246px 窄条里。
+   用 grid-column: 1 / -1 让它横跨所有列，再由 max-width 居中收窄。 */
+.batch-col { grid-column: 1 / -1; max-width: 1080px; margin: 0 auto; width: 100%; }
 .batch { display: flex; flex-direction: column; gap: 16px; }
 
 .batch-setup { margin-bottom: 14px; }
